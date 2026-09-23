@@ -81,6 +81,18 @@ accounts:
     interval: 5m
 ```
 
+### Tamaño del log
+
+El log está acotado y rota solo, para que un demonio que no miras nunca no te
+llene el disco. Por defecto son 5 MB por fichero más tres copias rotadas: unos
+20 MB como mucho. Para cambiarlo:
+
+```yaml
+log:
+  max_size: 5MB     # 500KB, 5MB, 1GB o un número de bytes
+  keep: 3           # copias rotadas; 0 no conserva ninguna
+```
+
 La estructura va en el YAML; los secretos no tienen por qué. Cualquier
 `${VARIABLE}` se sustituye desde el entorno o desde `secrets.env`, un fichero de
 líneas `CLAVE=valor` en el mismo directorio. El entorno tiene prioridad. La

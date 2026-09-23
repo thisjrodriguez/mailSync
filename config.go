@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,11 +18,21 @@ import (
 const (
 	defaultPort     = 993
 	defaultInterval = 5 * time.Minute
+	defaultLogSize  = 5 << 20 // 5 MB per file
+	defaultLogKeep  = 3       // plus three rotated copies
 	gmailHost       = "imap.gmail.com"
 )
 
 type Config struct {
 	Accounts []*Account `yaml:"accounts"`
+	Log      LogOptions `yaml:"log"`
+}
+
+// LogOptions bounds what mailsync.log is allowed to occupy on disk. Total usage
+// stays around MaxSize * (Keep + 1).
+type LogOptions struct {
+	MaxSize ByteSize `yaml:"max_size"`
+	Keep    *int     `yaml:"keep"`
 }
 
 type Account struct {
@@ -96,6 +107,57 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 }
 
 func (d Duration) Std() time.Duration { return time.Duration(d) }
+
+// ByteSize accepts sizes written the way people write them: 500KB, 5MB, 1GB,
+// or a plain number of bytes.
+type ByteSize int64
+
+var sizeUnits = []struct {
+	suffix string
+	factor int64
+}{
+	{"GB", 1 << 30}, {"MB", 1 << 20}, {"KB", 1 << 10},
+	{"G", 1 << 30}, {"M", 1 << 20}, {"K", 1 << 10}, {"B", 1},
+}
+
+func (b *ByteSize) UnmarshalYAML(node *yaml.Node) error {
+	var raw string
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	text := strings.ToUpper(strings.TrimSpace(raw))
+	for _, unit := range sizeUnits {
+		if !strings.HasSuffix(text, unit.suffix) {
+			continue
+		}
+		number := strings.TrimSpace(strings.TrimSuffix(text, unit.suffix))
+		value, err := strconv.ParseFloat(number, 64)
+		if err != nil {
+			return fmt.Errorf("tamaño inválido %q: %w", raw, err)
+		}
+		*b = ByteSize(value * float64(unit.factor))
+		return nil
+	}
+	value, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return fmt.Errorf("tamaño inválido %q: usa un número o algo como 5MB", raw)
+	}
+	*b = ByteSize(value)
+	return nil
+}
+
+func (b ByteSize) String() string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1fGB", float64(b)/(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1fMB", float64(b)/(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%.1fKB", float64(b)/(1<<10))
+	default:
+		return fmt.Sprintf("%dB", int64(b))
+	}
+}
 
 var placeholder = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
@@ -234,6 +296,19 @@ func unique(in []string) []string {
 func (c *Config) normalize() error {
 	if len(c.Accounts) == 0 {
 		return fmt.Errorf("no hay ninguna cuenta definida en accounts:")
+	}
+	if c.Log.MaxSize == 0 {
+		c.Log.MaxSize = defaultLogSize
+	}
+	if c.Log.MaxSize < 1<<10 {
+		return fmt.Errorf("log.max_size demasiado pequeño: %s", c.Log.MaxSize)
+	}
+	if c.Log.Keep == nil {
+		keep := defaultLogKeep
+		c.Log.Keep = &keep
+	}
+	if *c.Log.Keep < 0 {
+		return fmt.Errorf("log.keep no puede ser negativo")
 	}
 	names := map[string]bool{}
 	for i, a := range c.Accounts {

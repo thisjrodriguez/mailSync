@@ -83,6 +83,18 @@ accounts:
     interval: 5m
 ```
 
+### Log size
+
+The log is capped and rotates on its own, so a daemon you never look at cannot
+fill the disk. Defaults to 5 MB per file plus three rotated copies — about
+20 MB at worst. To change it:
+
+```yaml
+log:
+  max_size: 5MB     # 500KB, 5MB, 1GB, or a plain byte count
+  keep: 3           # rotated copies; 0 keeps none
+```
+
 Structure goes in the YAML; secrets do not have to. Any `${VARIABLE}` is
 substituted from the environment or from `secrets.env`, a file of `KEY=value`
 lines in the same directory. The environment wins. Substitution happens on

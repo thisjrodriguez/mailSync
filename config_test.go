@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func writeConfig(t *testing.T, body string) Paths {
@@ -232,5 +234,57 @@ func TestFingerprintNormalization(t *testing.T) {
 		if _, err := normalizeFingerprint(bad); err == nil {
 			t.Errorf("se aceptó un fingerprint inválido: %q", bad)
 		}
+	}
+}
+
+func TestByteSizeParsing(t *testing.T) {
+	cases := map[string]ByteSize{
+		"5MB": 5 << 20, "512KB": 512 << 10, "1GB": 1 << 30,
+		"2M": 2 << 20, "1024": 1024, "0.5MB": 512 << 10,
+	}
+	for input, want := range cases {
+		var got ByteSize
+		node := yaml.Node{Kind: yaml.ScalarNode, Value: input}
+		if err := got.UnmarshalYAML(&node); err != nil {
+			t.Errorf("%q: %v", input, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("%q = %d, se esperaba %d", input, got, want)
+		}
+	}
+	var bad ByteSize
+	node := yaml.Node{Kind: yaml.ScalarNode, Value: "mucho"}
+	if err := bad.UnmarshalYAML(&node); err == nil {
+		t.Error("se aceptó un tamaño inválido")
+	}
+}
+
+func TestLogDefaultsAndLimits(t *testing.T) {
+	p := writeConfig(t, minimalConfig)
+	t.Setenv("TRABAJO_PASS", "a")
+	t.Setenv("GMAIL_APP_PASS", "b")
+
+	cfg, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Log.MaxSize != defaultLogSize || *cfg.Log.Keep != defaultLogKeep {
+		t.Errorf("valores por defecto del log: %s x %d", cfg.Log.MaxSize, *cfg.Log.Keep)
+	}
+
+	// keep: 0 is a deliberate choice (no backups), not an unset field.
+	p2 := writeConfig(t, minimalConfig+"\nlog:\n  max_size: 2MB\n  keep: 0\n")
+	cfg2, err := LoadConfig(p2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Log.MaxSize != 2<<20 || *cfg2.Log.Keep != 0 {
+		t.Errorf("log: %s x %d", cfg2.Log.MaxSize, *cfg2.Log.Keep)
+	}
+
+	p3 := writeConfig(t, minimalConfig+"\nlog:\n  max_size: 10B\n")
+	if _, err := LoadConfig(p3); err == nil {
+		t.Error("se aceptó un max_size absurdo")
 	}
 }

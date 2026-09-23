@@ -36,4 +36,10 @@ accounts:
         to: midominio/Enviados
 
     interval: 5m
+
+# Tamaño máximo del log antes de rotar, y cuántas copias antiguas conservar.
+# El disco ocupado queda acotado a max_size x (keep + 1). Valores por defecto:
+# log:
+#   max_size: 5MB
+#   keep: 3
 `

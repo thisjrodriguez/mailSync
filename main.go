@@ -188,9 +188,9 @@ func cmdRun(p Paths, once bool) error {
 	}
 	defer store.Close()
 
-	logFile, err := os.OpenFile(p.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	logFile, err := newRotatingWriter(p.LogFile(), int64(cfg.Log.MaxSize), *cfg.Log.Keep)
 	if err != nil {
-		return fmt.Errorf("no se pudo abrir el log: %w", err)
+		return err
 	}
 	defer logFile.Close()
 	logger := log.New(io.MultiWriter(os.Stdout, logFile), "", log.LstdFlags)
@@ -198,7 +198,8 @@ func cmdRun(p Paths, once bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	logger.Printf("mailsync %s arrancando con %d cuenta(s)", version, len(cfg.Accounts))
+	logger.Printf("mailsync %s arrancando con %d cuenta(s); log limitado a %s x %d copias",
+		version, len(cfg.Accounts), cfg.Log.MaxSize, *cfg.Log.Keep+1)
 
 	var wg sync.WaitGroup
 	for _, acc := range cfg.Accounts {
