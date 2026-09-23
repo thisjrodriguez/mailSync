@@ -288,3 +288,48 @@ func TestLogDefaultsAndLimits(t *testing.T) {
 		t.Error("se aceptó un max_size absurdo")
 	}
 }
+
+// ".env" is what most people reach for, so it is accepted alongside
+// "secrets.env".
+func TestDotEnvIsAcceptedAsSecretsFile(t *testing.T) {
+	p := writeConfig(t, minimalConfig)
+	if err := os.WriteFile(p.DotEnvFile(), []byte("TRABAJO_PASS=desde-dotenv\nGMAIL_APP_PASS=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Accounts[0].Source.Password; got != "desde-dotenv" {
+		t.Errorf("password = %q", got)
+	}
+}
+
+// When both exist, secrets.env is the one that counts.
+func TestSecretsEnvWinsOverDotEnv(t *testing.T) {
+	p := writeConfig(t, minimalConfig)
+	if err := os.WriteFile(p.DotEnvFile(), []byte("TRABAJO_PASS=dotenv\nGMAIL_APP_PASS=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p.SecretsFile(), []byte("TRABAJO_PASS=secretsenv\nGMAIL_APP_PASS=y\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Accounts[0].Source.Password; got != "secretsenv" {
+		t.Errorf("password = %q", got)
+	}
+}
+
+// A .env with open permissions is as dangerous as an open secrets.env.
+func TestDotEnvPermissionsAreChecked(t *testing.T) {
+	p := writeConfig(t, minimalConfig)
+	if err := os.WriteFile(p.DotEnvFile(), []byte("TRABAJO_PASS=a\nGMAIL_APP_PASS=b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(p); err == nil {
+		t.Fatal("se aceptó un .env legible por todos")
+	}
+}

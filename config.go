@@ -199,16 +199,21 @@ func LoadConfig(p Paths) (*Config, error) {
 // variables win over the file.
 func loadSecrets(p Paths) (map[string]string, error) {
 	out := map[string]string{}
-	f, err := os.Open(p.SecretsFile())
-	if os.IsNotExist(err) {
+	path, err := p.findSecretsFile()
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
 		return out, nil
-	} else if err != nil {
+	}
+	if err := checkPerms(path, 0o600); err != nil {
+		return nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	if err := checkPerms(p.SecretsFile(), 0o600); err != nil {
-		return nil, err
-	}
 	scan := bufio.NewScanner(f)
 	for line := 1; scan.Scan(); line++ {
 		text := strings.TrimSpace(scan.Text())
@@ -217,7 +222,7 @@ func loadSecrets(p Paths) (map[string]string, error) {
 		}
 		key, val, ok := strings.Cut(text, "=")
 		if !ok {
-			return nil, fmt.Errorf("%s:%d: se esperaba CLAVE=valor", p.SecretsFile(), line)
+			return nil, fmt.Errorf("%s:%d: se esperaba CLAVE=valor", path, line)
 		}
 		out[strings.TrimSpace(key)] = strings.Trim(strings.TrimSpace(val), `"'`)
 	}
@@ -368,9 +373,8 @@ func (e *Endpoint) normalize(account, side string) error {
 	if e.User == "" {
 		return fmt.Errorf("%s: falta user", where)
 	}
-	if e.Password == "" {
-		return fmt.Errorf("%s: falta password", where)
-	}
+	// An absent password is not an error: it means "ask me when you start".
+	// See resolvePasswords.
 	if e.Fingerprint != "" {
 		normalized, err := normalizeFingerprint(e.Fingerprint)
 		if err != nil {
@@ -378,11 +382,18 @@ func (e *Endpoint) normalize(account, side string) error {
 		}
 		e.Fingerprint = normalized
 	}
-	// Gmail app passwords are shown in groups of four; they must be sent joined.
-	if strings.EqualFold(e.Type, "gmail") {
-		e.Password = strings.ReplaceAll(e.Password, " ", "")
-	}
+	e.Password = e.cleanPassword(e.Password)
 	return nil
+}
+
+// cleanPassword tidies a password however it arrived -- from the config, from
+// secrets.env or typed in. Gmail shows app passwords in groups of four, and
+// they must be sent joined.
+func (e Endpoint) cleanPassword(password string) string {
+	if strings.EqualFold(e.Type, "gmail") || e.Host == gmailHost {
+		return strings.ReplaceAll(password, " ", "")
+	}
+	return password
 }
 
 // normalizeFingerprint accepts the digest with or without colons and in any

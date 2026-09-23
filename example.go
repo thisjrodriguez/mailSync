@@ -2,9 +2,13 @@ package main
 
 const exampleConfig = `# mailsync - configuración
 #
-# La estructura vive aquí; las contraseñas NO tienen por qué.
-# Cualquier ${VARIABLE} se sustituye desde el entorno o desde secrets.env,
-# un fichero opcional en este mismo directorio con líneas CLAVE=valor.
+# La estructura vive aquí; las contraseñas NO tienen por qué. Tres formas:
+#
+#   1. En un fichero aparte: pon ${TRABAJO_PASS} aquí y TRABAJO_PASS=... en
+#      secrets.env (o .env) en este mismo directorio, con permisos 0600.
+#   2. En una variable de entorno con el mismo nombre; tiene prioridad.
+#   3. Sin guardarla: borra la línea password y mailsync te la pedirá al
+#      arrancar, sin mostrarla al teclearla.
 #
 # Destino Gmail: necesitas verificación en dos pasos activada y una
 # contraseña de aplicación (Cuenta de Google > Seguridad > Contraseñas de

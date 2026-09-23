@@ -83,6 +83,35 @@ accounts:
     interval: 5m
 ```
 
+### Where to put passwords
+
+Three ways, and you can mix them across accounts:
+
+**In a separate file.** Put `${WORK_PASS}` in the config and the value in
+`secrets.env` — or `.env`, both names are accepted — in the same directory:
+
+```
+WORK_PASS=the-password
+GMAIL_APP_PASS=abcd efgh ijkl mnop
+```
+
+The `config.yaml` then holds no secrets, so you can share or version it.
+
+**In an environment variable** of the same name. It takes precedence over the
+file, which is what makes this convenient for containers and systemd.
+
+**Nowhere at all.** Drop the `password` line and mailsync asks for it at
+startup, without echoing it as you type:
+
+```
+Contraseña de user@mydomain.com (work, origen):
+```
+
+It is asked once, before the first connection, and reused for the life of the
+process. This is the safest option because the password never touches disk, but
+it cannot work under `cron` or for a service that starts on its own: with no
+terminal, mailsync says so instead of starting half-configured.
+
 ### Log size
 
 The log is capped and rotates on its own, so a daemon you never look at cannot

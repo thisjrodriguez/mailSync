@@ -43,8 +43,23 @@ func resolveDir(flagDir string) (Paths, error) {
 
 func (p Paths) ConfigFile() string  { return filepath.Join(p.Dir, "config.yaml") }
 func (p Paths) SecretsFile() string { return filepath.Join(p.Dir, "secrets.env") }
-func (p Paths) StateFile() string   { return filepath.Join(p.Dir, "state.db") }
-func (p Paths) LogFile() string     { return filepath.Join(p.Dir, "mailsync.log") }
+func (p Paths) DotEnvFile() string  { return filepath.Join(p.Dir, ".env") }
+
+// findSecretsFile returns whichever secrets file exists, or "" if neither
+// does. Both names are accepted because ".env" is what most people reach for.
+func (p Paths) findSecretsFile() (string, error) {
+	for _, candidate := range []string{p.SecretsFile(), p.DotEnvFile()} {
+		switch _, err := os.Stat(candidate); {
+		case err == nil:
+			return candidate, nil
+		case !os.IsNotExist(err):
+			return "", err
+		}
+	}
+	return "", nil
+}
+func (p Paths) StateFile() string { return filepath.Join(p.Dir, "state.db") }
+func (p Paths) LogFile() string   { return filepath.Join(p.Dir, "mailsync.log") }
 
 // Create makes the directory (0700) and drops a commented example config if
 // none exists. It reports whether the config file was created.

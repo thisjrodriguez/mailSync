@@ -81,6 +81,35 @@ accounts:
     interval: 5m
 ```
 
+### Dónde poner las contraseñas
+
+Tienes tres formas, y puedes mezclarlas entre cuentas:
+
+**En un fichero aparte.** Pon `${TRABAJO_PASS}` en el config y el valor en
+`secrets.env` —o `.env`, se aceptan los dos nombres— en el mismo directorio:
+
+```
+TRABAJO_PASS=la-contraseña
+GMAIL_APP_PASS=abcd efgh ijkl mnop
+```
+
+Así el `config.yaml` no contiene secretos y puedes compartirlo o versionarlo.
+
+**En una variable de entorno** con ese mismo nombre. Tiene prioridad sobre el
+fichero, que es lo práctico para contenedores y para systemd.
+
+**Sin guardarla en ningún sitio.** Quita la línea `password` y mailsync te la
+pedirá al arrancar, sin mostrarla mientras la escribes:
+
+```
+Contraseña de usuario@midominio.com (trabajo, origen):
+```
+
+Se pide una sola vez, antes de la primera conexión, y se reutiliza mientras el
+proceso siga vivo. Es la opción más segura porque la contraseña nunca toca el
+disco, pero no sirve para `cron` ni para un servicio que arranque solo: sin
+terminal, mailsync te lo dice y no arranca a medias.
+
 ### Tamaño del log
 
 El log está acotado y rota solo, para que un demonio que no miras nunca no te

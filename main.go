@@ -120,7 +120,16 @@ func loadOrGuide(p Paths) (*Config, error) {
 		}
 		return nil, fmt.Errorf("he creado tu configuración en %s\n  edítala y vuelve a lanzarme", p.ConfigFile())
 	}
-	return LoadConfig(p)
+	cfg, err := LoadConfig(p)
+	if err != nil {
+		return nil, err
+	}
+	// Any password left out of the config is asked for now, once, before a
+	// single connection is attempted.
+	if err := resolvePasswords(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 func cmdCheck(p Paths) error {
