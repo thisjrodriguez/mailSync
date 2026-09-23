@@ -1,120 +1,152 @@
 # mailsync
 
-Copia correo de un servidor IMAP a otro. No reenvía: se conecta a ambos buzones,
-descarga cada mensaje en crudo y lo deposita en el destino con `APPEND`.
+**English** · [Español](README.es.md)
 
-Esto evita el problema de los reenvíos SMTP, que los hostings bloquean y que
-Gmail rechaza por SPF/DKIM/DMARC: aquí no hay una entrega nueva, solo una copia.
+Copy mail from one IMAP server to another. It does not forward: it connects to
+both mailboxes, downloads each message raw and drops it into the destination
+with `APPEND`.
 
-- El origen no se modifica: se lee con `BODY.PEEK`, así que nada se marca como leído.
-- Los bytes del mensaje no se tocan, ni se parsean ni se reescriben.
-- Se preservan la fecha original y los flags (`\Seen`, `\Answered`, `\Flagged`, `\Draft`).
-- Es unidireccional y solo añade: borrar en el destino nunca toca el origen.
-- Es idempotente: puedes ejecutarlo mil veces sin duplicar nada.
+This sidesteps the problem with SMTP forwarding, which hosting providers block
+and Gmail rejects over SPF/DKIM/DMARC: there is no new delivery here, only a
+copy.
 
-## Instalación
+- The source is never modified: it is read with `BODY.PEEK`, so nothing gets marked as read.
+- Message bytes are untouched — never parsed, never rewritten.
+- The original date and flags (`\Seen`, `\Answered`, `\Flagged`, `\Draft`) are preserved.
+- One-way and append-only: deleting at the destination never touches the source.
+- Idempotent: run it a thousand times without duplicating anything.
+
+## Install
 
     go build -o mailsync .
 
-Sale un binario único, sin dependencias en tiempo de ejecución.
+You get a single binary with no runtime dependencies.
 
-## Uso
+## Usage
 
-    mailsync init      crea el directorio de trabajo y un config.yaml de ejemplo
-    mailsync check     valida la configuración y prueba el login, sin copiar nada
-    mailsync run       copia en bucle, según el intervalo de cada cuenta
-    mailsync once      hace una sola pasada y termina (útil para cron)
-    mailsync status    muestra lo sincronizado hasta ahora
+    mailsync init      create the working directory and an example config.yaml
+    mailsync folders   list the folders in each account's source mailbox
+    mailsync check     validate the config and test the login, copying nothing
+    mailsync run       copy in a loop, at each account's interval
+    mailsync once      make a single pass and exit (handy for cron)
+    mailsync status    show what has been synced so far
+    mailsync fingerprint HOST[:PORT]
+                       show the certificate a server presents, so you can pin it
 
-Empieza siempre por `check`: la mayoría de los problemas son credenciales,
-puertos o TLS, y ahí los ves en dos segundos en vez de descubrirlos por un fallo
-silencioso de madrugada.
+Always start with `check`: most problems are credentials, ports or TLS, and this
+shows them in two seconds instead of letting you find out through a silent
+failure at three in the morning.
 
-## Directorio de trabajo
+Then run `folders` to see the real mailbox names before writing your folder
+list — guessing them is how migrations end up half-copied.
 
-Todo vive junto, para que una copia de seguridad de una carpeta lo cubra todo:
+## Working directory
+
+Everything lives together, so backing up one folder covers all of it:
 
     ~/.config/mailsync/
-      config.yaml     lo único que editas tú
-      secrets.env     opcional: las contraseñas, fuera del config
-      state.db        SQLite con la posición de cada carpeta
+      config.yaml     the only file you edit
+      secrets.env     optional: your passwords, kept out of the config
+      state.db        SQLite holding each folder's position
       mailsync.log
 
-La ruta se resuelve en este orden: `--config`, `$MAILSYNC_HOME`,
+The path is resolved in this order: `--config`, `$MAILSYNC_HOME`,
 `$XDG_CONFIG_HOME/mailsync`, `~/.config/mailsync`.
 
-El directorio va en `0700` y los ficheros con credenciales en `0600`. Se
-comprueba en cada arranque, no solo al crearlos: si los permisos están más
-abiertos, mailsync se niega a arrancar.
+The directory is `0700` and the credential files `0600`. This is checked on
+every start, not just at creation: if the permissions are wider, mailsync
+refuses to run.
 
-## Configuración
+## Configuration
 
 ```yaml
 accounts:
-  - name: trabajo
+  - name: work
 
     source:
-      host: mail.midominio.com
-      port: 993                    # por defecto
-      user: usuario@midominio.com
-      password: ${TRABAJO_PASS}
-      tls: tls                     # "tls" (993) o "starttls" (143)
+      host: mail.mydomain.com
+      port: 993                    # default
+      user: user@mydomain.com
+      password: ${WORK_PASS}
+      tls: tls                     # "tls" (993) or "starttls" (143)
 
     dest:
-      type: gmail                  # rellena imap.gmail.com:993
-      user: tucuenta@gmail.com
+      type: gmail                  # fills in imap.gmail.com:993
+      user: youraccount@gmail.com
       password: ${GMAIL_APP_PASS}
 
     folders:
-      - INBOX                      # mismo nombre en el destino
-      - from: INBOX.Sent           # o renombrada
-        to: midominio/Enviados
+      - INBOX                      # same name at the destination
+      - from: INBOX.Sent           # or renamed
+        to: mydomain/Sent
 
     interval: 5m
 ```
 
-La estructura va en el YAML; los secretos no tienen por qué. Cualquier
-`${VARIABLE}` se sustituye desde el entorno o desde `secrets.env`, un fichero de
-líneas `CLAVE=valor` en el mismo directorio. El entorno tiene prioridad. La
-sustitución se hace sobre los valores, no sobre el texto: un `${...}` escrito en
-un comentario se queda como está.
+Structure goes in the YAML; secrets do not have to. Any `${VARIABLE}` is
+substituted from the environment or from `secrets.env`, a file of `KEY=value`
+lines in the same directory. The environment wins. Substitution happens on
+values, not on text: a `${...}` written inside a comment is left alone.
 
-## Gmail como destino
+## Servers with an invalid certificate
 
-Con contraseña de aplicación, sin OAuth:
+Shared hosting often serves a self-signed certificate under the node's own name,
+which normal TLS verification rejects. Pin it instead of disabling verification:
 
-1. Activa la verificación en dos pasos en tu cuenta de Google.
-2. Cuenta de Google → Seguridad → Contraseñas de aplicaciones. Genera una.
-3. Pégala en el config; los espacios sobran y se quitan solos.
-4. Gmail → Configuración → Reenvío y correo POP/IMAP → activa IMAP.
+    mailsync fingerprint mail.mydomain.com:993
 
-En Gmail las carpetas son etiquetas. Un `to: midominio/Enviados` crea la
-etiqueta anidada correspondiente.
+Check that the certificate is the one you expect, then add the digest to that
+endpoint:
 
-## Cómo evita los duplicados
+```yaml
+    source:
+      host: mail.mydomain.com
+      fingerprint: 3fa9c1e7b0d24856af73c9e1082b64d5ff17ae3c95b0d8427e6a1cb35d940f2e
+```
 
-Por cada carpeta se guardan el `UIDVALIDITY` del buzón y el último UID copiado.
-Cada pasada pide solo lo que está por encima de esa marca.
+With a pin, mailsync requires an exact match against that certificate. An
+impostor is still rejected — which is what skipping verification would not do.
+If the server legitimately changes its certificate, the connection fails and
+tells you to re-run `fingerprint`.
 
-Si el servidor de origen cambia el `UIDVALIDITY` —renumera el buzón y deja
-inservibles los UIDs guardados— mailsync vuelve a recorrer la carpeta desde
-cero, pero filtra por `Message-ID` los mensajes que ya había copiado. Por eso no
-acabas con el buzón duplicado tras una migración del hosting.
+## Gmail as the destination
 
-La marca de progreso se escribe después de que el `APPEND` haya ido bien: si el
-proceso muere a mitad, como mucho se recopia un mensaje, nunca se pierde uno.
+With an app password, no OAuth:
 
-## Límites conocidos
+1. Turn on 2-step verification for your Google account.
+2. Google Account → Security → App passwords. Generate one.
+3. Paste it into the config; the spaces are stripped for you.
+4. Gmail → Settings → Forwarding and POP/IMAP → enable IMAP.
 
-- Sin OAuth: solo autenticación con usuario y contraseña (o contraseña de aplicación).
-- Sondeo por intervalo, no IMAP IDLE. La latencia es como mucho el `interval`.
-- Los mensajes de más de 60 MB se omiten y se anotan en el log.
-- Las contraseñas se guardan en claro en disco, protegidas solo por permisos.
+Gmail has labels rather than folders. A `to: mydomain/Sent` creates the
+corresponding nested label.
+
+## How duplicates are avoided
+
+For each folder, mailsync stores the mailbox's `UIDVALIDITY` and the last UID
+copied. Each pass asks only for what is above that mark.
+
+If the source server changes its `UIDVALIDITY` — renumbering the mailbox and
+rendering the stored UIDs meaningless — mailsync walks the folder again from
+scratch, but filters out by `Message-ID` the messages it had already copied.
+That is why you do not end up with a duplicated mailbox after a hosting
+migration.
+
+The progress mark is written after the `APPEND` succeeded: if the process dies
+midway, at worst one message is copied twice, never lost.
+
+## Known limits
+
+- No OAuth: username and password only (or an app password).
+- Interval polling, not IMAP IDLE. Latency is at most the `interval`.
+- Messages larger than 60 MB are skipped and noted in the log.
+- Passwords sit on disk in the clear, protected only by file permissions.
 
 ## Tests
 
     go test ./...
 
-La suite levanta servidores IMAP de verdad en memoria, sobre TLS, y comprueba el
-ciclo completo: que los bytes lleguen intactos, que el origen no se modifique,
-que repetir pasadas no duplique y que un reinicio de UIDs no rompa nada.
+The suite starts real in-memory IMAP servers over TLS and exercises the full
+cycle: that bytes arrive intact, that the source is not modified, that repeated
+passes do not duplicate, that a UID reset breaks nothing, and that a pinned
+certificate is enforced.
