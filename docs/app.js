@@ -1,100 +1,205 @@
 'use strict';
 
-/* mailsync config generator.
-   Everything runs in the page: no network, no passwords. The form produces a
-   config.yaml plus a matching secrets.env template. */
+/* mailsync configuration generator: interface only.
+   The YAML model lives in config.js and the text in strings.js. Nothing here
+   touches the network, and no field ever holds a password. */
 
+const C = MailsyncConfig;
 const STRINGS = MailsyncStrings;
+const LANG_KEY = 'mailsync.lang';
 
-let lang = (navigator.language || 'es').toLowerCase().startsWith('en') ? 'en' : 'es';
+function detectLang() {
+  const tags = navigator.languages && navigator.languages.length
+    ? navigator.languages : [navigator.language || 'es'];
+  // Spanish unless the browser clearly prefers English first.
+  return tags[0] && tags[0].toLowerCase().startsWith('en') ? 'en' : 'es';
+}
+
+function storedPreference() {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    return saved === 'es' || saved === 'en' ? saved : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
+let langPref = storedPreference();
+let lang = langPref === 'auto' ? detectLang() : langPref;
+
 const t = (key, ...args) => {
-  let s = STRINGS[lang][key] || key;
+  let s = STRINGS[lang][key];
+  if (s === undefined) s = key;
   args.forEach((a) => { s = s.replace('%s', a); });
   return s;
 };
 
-const C = MailsyncConfig;
-const DEFAULT_INTERVAL = C.DEFAULT_INTERVAL;
-
-function yamlText() {
-  return { promptComment: t('promptComment') };
-}
-
-function secretsText() {
-  return { noVars: t('noVars'), secretsHeader: t('secretsHeader') };
-}
-
-// Validation lives in config.js and returns codes; the sentences live here.
-function errorMessages() {
-  return C.validate(state).map(({ code, args }) => {
-    const translated = args.map((a) => (a === 'source' ? t('source') : a === 'dest' ? t('dest') : a));
-    return t('err_' + code, ...translated);
-  });
-}
-
 const state = C.newState('');
+const view = { name: 'account', account: 0 };
 
-/* ---------- rendering ---------- */
+/* ---------- small DOM helpers ---------- */
 
 const $ = (id) => document.getElementById(id);
 
+function el(tag, props, ...children) {
+  const node = document.createElement(tag);
+  Object.entries(props || {}).forEach(([k, v]) => {
+    if (k === 'class') node.className = v;
+    else if (k === 'text') node.textContent = v;
+    else if (k === 'html') node.innerHTML = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v);
+  });
+  children.flat().forEach((c) => c && node.append(c));
+  return node;
+}
+
 function field(labelText, input, hint) {
-  const wrap = document.createElement('div');
-  const label = document.createElement('label');
-  label.textContent = labelText;
-  wrap.append(label, input);
-  if (hint) {
-    const h = document.createElement('div');
-    h.className = 'hint';
-    h.textContent = hint;
-    wrap.append(h);
-  }
+  const wrap = el('div', {}, el('label', { text: labelText }), input);
+  if (hint) wrap.append(el('div', { class: 'hint', text: hint }));
   return wrap;
 }
 
 function textInput(value, placeholder, onInput) {
-  const el = document.createElement('input');
-  el.type = 'text';
-  el.value = value || '';
-  if (placeholder) el.placeholder = placeholder;
-  el.addEventListener('input', () => { onInput(el.value); refreshOutput(); });
-  return el;
+  const node = el('input', { type: 'text', placeholder: placeholder || null });
+  node.value = value || '';
+  node.addEventListener('input', () => { onInput(node.value); afterEdit(); });
+  return node;
 }
 
-function renderEndpoint(acc, key, side) {
-  const ep = acc[key];
-  const box = document.createElement('div');
-  const title = document.createElement('h3');
-  title.textContent = side;
-  box.append(title);
-
-  const preset = document.createElement('select');
-  [['custom', t('presetCustom')], ['gmail', t('presetGmail')]].forEach(([v, label]) => {
-    const o = document.createElement('option');
-    o.value = v; o.textContent = label; o.selected = ep.preset === v;
-    preset.append(o);
+function select(options, current, onChange) {
+  const node = el('select', {});
+  options.forEach(([value, label]) => {
+    const option = el('option', { value, text: label });
+    if (value === current) option.selected = true;
+    node.append(option);
   });
-  preset.addEventListener('change', () => { ep.preset = preset.value; render(); });
+  node.addEventListener('change', () => onChange(node.value));
+  return node;
+}
 
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  grid.append(field(t('preset'), preset, ep.preset === 'gmail' ? t('presetGmailHint') : ''));
+/* ---------- state helpers ---------- */
+
+const yamlText = () => ({ promptComment: t('promptComment') });
+const secretsText = () => ({ noVars: t('noVars'), secretsHeader: t('secretsHeader') });
+
+function errorsFor() {
+  return C.validate(state).map(({ code, args }) => {
+    const shown = args.map((a) => (a === 'source' ? t('source') : a === 'dest' ? t('dest') : a));
+    return { code, args, text: t('err_' + code, ...shown) };
+  });
+}
+
+// accountHasErrors keys errors back to the account they came from, so the
+// sidebar can flag which one needs attention without opening it.
+function accountHasErrors(index) {
+  const acc = state.accounts[index];
+  const label = acc.name.trim() || '#' + (index + 1);
+  return errorsFor().some((e) => e.args.length > 0 && String(e.args[0]) === label);
+}
+
+function accountLabel(index) {
+  return state.accounts[index].name.trim() || t('untitled');
+}
+
+/* ---------- top bar ---------- */
+
+function renderTopbar() {
+  $('brand-sub').textContent = t('brandSub');
+  const errors = errorsFor();
+  const chip = $('status-chip');
+  if (errors.length === 0) {
+    chip.className = 'chip ok';
+    chip.textContent = '✓ ' + t('statusOk');
+  } else {
+    chip.className = 'chip bad';
+    chip.textContent = errors.length === 1 ? t('statusOneError') : t('statusErrors', errors.length);
+  }
+  [['auto', 'lang-auto'], ['es', 'lang-es'], ['en', 'lang-en']].forEach(([value, id]) => {
+    $(id).setAttribute('aria-pressed', String(langPref === value));
+  });
+}
+
+function setLang(pref) {
+  langPref = pref;
+  lang = pref === 'auto' ? detectLang() : pref;
+  try { pref === 'auto' ? localStorage.removeItem(LANG_KEY) : localStorage.setItem(LANG_KEY, pref); } catch { /* ignore */ }
+  document.documentElement.lang = lang;
+  render();
+}
+
+/* ---------- sidebar ---------- */
+
+function sideItem(label, isCurrent, onClick, options) {
+  const opts = options || {};
+  const item = el('button', {
+    class: 'side-item' + (opts.class ? ' ' + opts.class : ''),
+    'aria-current': String(!!isCurrent),
+    onclick: onClick,
+  }, el('span', { class: 'grow', text: label }));
+  if (opts.flag) item.append(el('span', { class: 'dot', title: t('hasErrors') }));
+  return item;
+}
+
+function renderSidebar() {
+  const bar = $('sidebar');
+  bar.textContent = '';
+
+  bar.append(el('div', { class: 'side-title', text: t('sideAccounts') }));
+  state.accounts.forEach((_, i) => {
+    bar.append(sideItem(
+      accountLabel(i),
+      view.name === 'account' && view.account === i,
+      () => { view.name = 'account'; view.account = i; render(); },
+      { flag: accountHasErrors(i) }
+    ));
+  });
+  bar.append(sideItem('+ ' + t('sideAdd'), false, () => {
+    state.accounts.push(C.newAccount(''));
+    view.name = 'account';
+    view.account = state.accounts.length - 1;
+    render();
+  }, { class: 'add' }));
+
+  bar.append(el('div', { class: 'side-sep' }));
+  bar.append(el('div', { class: 'side-title', text: t('sideSettings') }));
+  bar.append(sideItem(t('logTitle'), view.name === 'log', () => { view.name = 'log'; render(); }));
+
+  bar.append(el('div', { class: 'side-sep' }));
+  bar.append(el('div', { class: 'side-title', text: t('sideOutput') }));
+  bar.append(sideItem('config.yaml', view.name === 'yaml', () => { view.name = 'yaml'; render(); }));
+  bar.append(sideItem('secrets.env', view.name === 'secrets', () => { view.name = 'secrets'; render(); }));
+
+  bar.append(el('div', { class: 'side-sep' }));
+  bar.append(el('div', { class: 'side-title', text: t('sideFile') }));
+  bar.append(sideItem(t('sideLoad'), view.name === 'import', () => { view.name = 'import'; render(); }));
+  bar.append(sideItem(t('sideExport'), false, exportAll));
+}
+
+/* ---------- account view ---------- */
+
+function renderEndpoint(acc, key) {
+  const ep = acc[key];
+  const box = el('div', {}, el('h3', { text: key === 'source' ? t('source') : t('dest') }));
+
+  const grid = el('div', { class: 'grid' });
+  grid.append(field(t('preset'),
+    select([['custom', t('presetCustom')], ['gmail', t('presetGmail')]], ep.preset, (v) => {
+      ep.preset = v;
+      render();
+    }),
+    ep.preset === 'gmail' ? t('presetGmailHint') : ''));
 
   if (ep.preset !== 'gmail') {
     grid.append(field(t('host'), textInput(ep.host, 'mail.midominio.com', (v) => { ep.host = v; })));
-    const port = document.createElement('input');
-    port.type = 'number'; port.value = ep.port; port.min = '1'; port.max = '65535';
-    port.addEventListener('input', () => { ep.port = port.value; refreshOutput(); });
+
+    const port = el('input', { type: 'number', min: '1', max: '65535' });
+    port.value = ep.port;
+    port.addEventListener('input', () => { ep.port = port.value; afterEdit(); });
     grid.append(field(t('port'), port));
 
-    const tls = document.createElement('select');
-    [['tls', 'TLS (993)'], ['starttls', 'STARTTLS (143)']].forEach(([v, label]) => {
-      const o = document.createElement('option');
-      o.value = v; o.textContent = label; o.selected = ep.tls === v;
-      tls.append(o);
-    });
-    tls.addEventListener('change', () => { ep.tls = tls.value; refreshOutput(); });
-    grid.append(field(t('security'), tls));
+    grid.append(field(t('security'),
+      select([['tls', 'TLS (993)'], ['starttls', 'STARTTLS (143)']], ep.tls, (v) => { ep.tls = v; afterEdit(); })));
   }
 
   const userHint = ep.preset === 'gmail' ? 'cuenta@gmail.com'
@@ -102,179 +207,234 @@ function renderEndpoint(acc, key, side) {
   grid.append(field(t('user'), textInput(ep.user, userHint, (v) => { ep.user = v; })));
   box.append(grid);
 
-  // Password: a variable name or nothing at all. Never a password field.
-  const pwWrap = document.createElement('div');
-  pwWrap.style.marginTop = '.75rem';
-  const pwLabel = document.createElement('label');
-  pwLabel.textContent = t('password');
-  const radios = document.createElement('div');
-  radios.className = 'radios';
-  const groupName = 'pw-' + acc.name + '-' + key + '-' + Math.random().toString(36).slice(2, 7);
+  // Password: a variable name, or nothing at all. Never a password field.
+  const pw = el('div', { style: 'margin-top:.7rem' }, el('label', { text: t('password') }));
+  const radios = el('div', { class: 'radios' });
+  const group = 'pw-' + view.account + '-' + key;
   [['var', t('pwVar')], ['prompt', t('pwPrompt')]].forEach(([mode, label]) => {
-    const l = document.createElement('label');
-    const r = document.createElement('input');
-    r.type = 'radio'; r.name = groupName; r.checked = ep.pwMode === mode;
-    r.addEventListener('change', () => { ep.pwMode = mode; render(); });
-    l.append(r, document.createTextNode(label));
-    radios.append(l);
+    const radio = el('input', { type: 'radio', name: group });
+    radio.checked = ep.pwMode === mode;
+    radio.addEventListener('change', () => { ep.pwMode = mode; render(); });
+    radios.append(el('label', {}, radio, document.createTextNode(label)));
   });
-  pwWrap.append(pwLabel, radios);
+  pw.append(radios);
 
   if (ep.pwMode === 'var') {
-    const varGrid = document.createElement('div');
-    varGrid.className = 'grid';
-    varGrid.style.marginTop = '.5rem';
-    const varHint = key === 'source' ? 'ORIGEN_PASS' : (ep.preset === 'gmail' ? 'GMAIL_PASS' : 'DESTINO_PASS');
-    varGrid.append(field(t('pwVarName'), textInput(ep.pwVar, varHint, (v) => { ep.pwVar = v.toUpperCase(); })));
-    pwWrap.append(varGrid);
+    const hint = key === 'source' ? 'ORIGEN_PASS' : (ep.preset === 'gmail' ? 'GMAIL_PASS' : 'DESTINO_PASS');
+    pw.append(el('div', { class: 'grid', style: 'margin-top:.45rem' },
+      field(t('pwVarName'), textInput(ep.pwVar, hint, (v) => { ep.pwVar = v.toUpperCase(); }))));
   } else {
-    const h = document.createElement('div');
-    h.className = 'hint'; h.textContent = t('pwPromptHint');
-    pwWrap.append(h);
+    pw.append(el('div', { class: 'hint', text: t('pwPromptHint') }));
   }
-  box.append(pwWrap);
+  box.append(pw);
 
-  const fpGrid = document.createElement('div');
-  fpGrid.className = 'grid';
-  fpGrid.style.marginTop = '.75rem';
-  fpGrid.append(field(t('fingerprint'),
-    textInput(ep.fingerprint, '', (v) => { ep.fingerprint = v; }), t('fingerprintHint')));
-  box.append(fpGrid);
-
+  box.append(el('div', { class: 'grid', style: 'margin-top:.7rem' },
+    field(t('fingerprint'), textInput(ep.fingerprint, '', (v) => { ep.fingerprint = v; }), t('fingerprintHint'))));
   return box;
 }
 
 function renderFolders(acc) {
-  const box = document.createElement('div');
-  box.style.marginTop = '1rem';
-  const title = document.createElement('h3');
-  title.textContent = t('folders');
-  box.append(title);
-
+  const box = el('div', {}, el('h3', { text: t('folders') }));
   acc.folders.forEach((folder, i) => {
-    const row = document.createElement('div');
-    row.className = 'folder-row';
-    row.append(textInput(folder.from, t('folderFrom'), (v) => { folder.from = v; }));
-    const arrow = document.createElement('span');
-    arrow.className = 'arrow'; arrow.textContent = '→';
-    row.append(arrow);
-    row.append(textInput(folder.to, t('folderTo'), (v) => { folder.to = v; }));
-    const del = document.createElement('button');
-    del.className = 'link'; del.textContent = '✕'; del.title = t('remove');
-    del.addEventListener('click', () => { acc.folders.splice(i, 1); render(); });
-    row.append(del);
-    box.append(row);
+    box.append(el('div', { class: 'folder-row' },
+      textInput(folder.from, t('folderFrom'), (v) => { folder.from = v; }),
+      el('span', { class: 'arrow', text: '→' }),
+      textInput(folder.to, t('folderTo'), (v) => { folder.to = v; }),
+      el('button', {
+        class: 'icon', title: t('remove'), text: '✕',
+        onclick: () => { acc.folders.splice(i, 1); render(); },
+      })));
   });
-
-  const hint = document.createElement('div');
-  hint.className = 'hint'; hint.textContent = t('folderHint');
-  const add = document.createElement('button');
-  add.textContent = t('addFolder');
-  add.style.marginTop = '.5rem';
-  add.addEventListener('click', () => { acc.folders.push({ from: '', to: '' }); render(); });
-  box.append(hint, add);
+  box.append(el('div', { class: 'hint', text: t('folderHint') }));
+  box.append(el('button', {
+    class: 'btn', text: t('addFolder'), style: 'margin-top:.5rem',
+    onclick: () => { acc.folders.push({ from: '', to: '' }); render(); },
+  }));
   return box;
 }
 
-function renderAccounts() {
-  const container = $('accounts');
-  container.textContent = '';
-  state.accounts.forEach((acc, i) => {
-    const card = document.createElement('div');
-    card.className = 'card';
+function renderAccountView(main) {
+  const acc = state.accounts[view.account];
+  if (!acc) { view.name = 'yaml'; return renderMain(); }
 
-    const head = document.createElement('div');
-    head.className = 'card-head';
-    const h = document.createElement('h3');
-    h.textContent = t('account') + ' ' + (i + 1);
-    head.append(h);
-    if (state.accounts.length > 1) {
-      const del = document.createElement('button');
-      del.className = 'link'; del.textContent = t('remove');
-      del.addEventListener('click', () => { state.accounts.splice(i, 1); render(); });
-      head.append(del);
-    }
-    card.append(head);
-
-    const top = document.createElement('div');
-    top.className = 'grid';
-    top.append(field(t('name'), textInput(acc.name, 'trabajo', (v) => { acc.name = v; }), t('nameHint')));
-    top.append(field(t('interval'), textInput(acc.interval, '5m', (v) => { acc.interval = v; }), t('intervalHint')));
-    card.append(top);
-
-    card.append(renderEndpoint(acc, 'source', t('source')));
-    card.append(renderEndpoint(acc, 'dest', t('dest')));
-    card.append(renderFolders(acc));
-    container.append(card);
-  });
-}
-
-function refreshOutput() {
-  $('yaml-out').textContent = C.buildYAML(state, yamlText());
-  $('secrets-out').textContent = C.buildSecrets(state, secretsText());
-
-  const errors = errorMessages();
-  const box = $('errors');
-  const status = $('out-status');
-  if (errors.length === 0) {
-    box.hidden = true;
-    status.textContent = '✓ ' + t('valid');
-  } else {
-    box.hidden = false;
-    box.textContent = '';
-    const title = document.createElement('div');
-    title.textContent = t('errTitle');
-    const list = document.createElement('ul');
-    errors.forEach((e) => {
-      const li = document.createElement('li');
-      li.textContent = e;
-      list.append(li);
-    });
-    box.append(title, list);
-    status.textContent = '';
+  const head = el('div', { class: 'out-head' },
+    el('h2', { text: accountLabel(view.account) }));
+  if (state.accounts.length > 1) {
+    head.append(el('button', {
+      class: 'btn', text: t('removeAccount'),
+      onclick: () => {
+        state.accounts.splice(view.account, 1);
+        view.account = Math.max(0, view.account - 1);
+        render();
+      },
+    }));
   }
+  main.append(head);
+
+  const nameInput = textInput(acc.name, 'trabajo', (v) => {
+    acc.name = v;
+    renderSidebar();
+  });
+  main.append(el('div', { class: 'grid' },
+    field(t('name'), nameInput, t('nameHint')),
+    field(t('interval'), textInput(acc.interval, '5m', (v) => { acc.interval = v; }), t('intervalHint'))));
+
+  main.append(renderEndpoint(acc, 'source'));
+  main.append(renderEndpoint(acc, 'dest'));
+  main.append(renderFolders(acc));
 }
 
-function applyStaticStrings() {
-  document.querySelectorAll('[data-i18n]').forEach((el) => {
-    const key = el.dataset.i18n;
-    const value = STRINGS[lang][key];
-    if (value === undefined) return;
-    if (/<[a-z]/i.test(value)) el.innerHTML = value;
-    else el.textContent = value;
+/* ---------- other views ---------- */
+
+function renderLogView(main) {
+  main.append(el('h2', { text: t('logTitle') }));
+  main.append(el('p', { class: 'sub', text: t('logSub') }));
+
+  const maxSize = textInput(state.log.maxSize, '5MB', (v) => { state.log.maxSize = v; });
+  const keep = el('input', { type: 'number', min: '0', max: '100' });
+  keep.value = state.log.keep;
+  keep.addEventListener('input', () => { state.log.keep = keep.value; afterEdit(); });
+
+  main.append(el('div', { class: 'grid' },
+    field(t('logMax'), maxSize, t('logMaxHint')),
+    field(t('logKeep'), keep, t('logKeepHint'))));
+}
+
+function outputView(main, title, subtitle, content, filename) {
+  main.append(el('h2', { text: title }));
+  main.append(el('p', { class: 'sub', html: subtitle }));
+
+  const copyBtn = el('button', { class: 'btn', text: t('copy') });
+  copyBtn.addEventListener('click', () => copyToClipboard(content, copyBtn));
+  main.append(el('div', { class: 'out-head' },
+    el('span', {}),
+    el('div', { class: 'row' },
+      copyBtn,
+      el('button', {
+        class: 'btn', text: t('download'),
+        onclick: () => download(filename, content),
+      }))));
+  main.append(el('pre', { text: content }));
+}
+
+function renderImportView(main) {
+  main.append(el('h2', { text: t('importTitle') }));
+  main.append(el('p', { class: 'sub', text: t('importHint') }));
+
+  const status = el('div', { class: 'hint' });
+  const area = el('textarea', { spellcheck: 'false', placeholder: 'accounts:\n  - name: trabajo\n    ...' });
+
+  const load = (text) => {
+    try {
+      const loaded = C.stateFromYAML(text);
+      state.accounts = loaded.accounts;
+      state.log = loaded.log;
+      view.name = 'account';
+      view.account = 0;
+      render();
+    } catch (err) {
+      status.textContent = t('importErr') + err.message;
+      status.style.color = 'var(--danger)';
+    }
+  };
+
+  const fileInput = $('file-input');
+  fileInput.onchange = () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { area.value = String(reader.result); load(area.value); };
+    reader.readAsText(file);
+    fileInput.value = '';
+  };
+
+  main.append(el('div', { class: 'row', style: 'margin-bottom:.7rem' },
+    el('button', { class: 'btn', text: t('chooseFile'), onclick: () => fileInput.click() }),
+    el('span', { class: 'hint', text: t('orPaste') })));
+  main.append(area);
+  main.append(el('div', { class: 'row', style: 'margin-top:.6rem' },
+    el('button', { class: 'btn primary', text: t('importBtn'), onclick: () => load(area.value) }),
+    status));
+}
+
+function renderErrors(main) {
+  const errors = errorsFor();
+  if (errors.length === 0) return;
+  const box = el('div', { class: 'errors' }, el('div', { text: t('errTitle') }));
+  const list = el('ul');
+  errors.forEach((e) => list.append(el('li', { text: e.text })));
+  box.append(list);
+  main.append(box);
+}
+
+function renderMain() {
+  const main = $('main-inner');
+  main.textContent = '';
+
+  if (view.name === 'account' || view.name === 'log') {
+    main.append(el('div', { class: 'notice' },
+      el('strong', { text: t('privacyTitle') }),
+      el('span', { html: t('privacyBody') })));
+  }
+
+  switch (view.name) {
+    case 'account': renderAccountView(main); break;
+    case 'log': renderLogView(main); break;
+    case 'yaml':
+      renderErrors(main);
+      outputView(main, 'config.yaml', t('outHint'), C.buildYAML(state, yamlText()), 'config.yaml');
+      break;
+    case 'secrets':
+      outputView(main, 'secrets.env', t('secretsHint'), C.buildSecrets(state, secretsText()), 'secrets.env');
+      break;
+    case 'import': renderImportView(main); break;
+    default: break;
+  }
+
+  main.append(el('footer', {},
+    document.createTextNode(t('footer') + ' '),
+    el('a', { href: 'https://github.com/thisjrodriguez/mailSync', text: 'github.com/thisjrodriguez/mailSync' })));
+}
+
+/* afterEdit keeps typing cheap: only the parts that can change while a field
+   has focus are redrawn, so the caret is never thrown out of an input. */
+function afterEdit() {
+  renderTopbar();
+  state.accounts.forEach((_, i) => {
+    const item = $('sidebar').querySelectorAll('.side-item')[i];
+    if (!item) return;
+    item.querySelector('.grow').textContent = accountLabel(i);
+    const flagged = accountHasErrors(i);
+    const dot = item.querySelector('.dot');
+    if (flagged && !dot) item.append(el('span', { class: 'dot', title: t('hasErrors') }));
+    if (!flagged && dot) dot.remove();
   });
-  document.documentElement.lang = lang;
-  $('lang-es').className = lang === 'es' ? 'primary' : '';
-  $('lang-en').className = lang === 'en' ? 'primary' : '';
 }
 
 function render() {
-  applyStaticStrings();
-  renderAccounts();
-  refreshOutput();
+  document.documentElement.lang = lang;
+  renderTopbar();
+  renderSidebar();
+  renderMain();
 }
 
-/* ---------- import ---------- */
-
-function loadFromYAML(text) {
-  const loaded = C.stateFromYAML(text);
-  state.accounts = loaded.accounts;
-  state.log = loaded.log;
-  $('log-max').value = state.log.maxSize;
-  $('log-keep').value = state.log.keep;
-}
-
-/* ---------- wiring ---------- */
+/* ---------- file helpers ---------- */
 
 function download(filename, content) {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
+  const a = el('a', { href: url, download: filename });
   document.body.append(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function exportAll() {
+  download('config.yaml', C.buildYAML(state, yamlText()));
+  if (C.variableNames(state).length > 0) {
+    download('secrets.env', C.buildSecrets(state, secretsText()));
+  }
 }
 
 async function copyToClipboard(text, button) {
@@ -282,40 +442,21 @@ async function copyToClipboard(text, button) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.append(ta);
-    ta.select();
+    const area = el('textarea', {});
+    area.value = text;
+    document.body.append(area);
+    area.select();
     document.execCommand('copy');
-    ta.remove();
+    area.remove();
   }
   button.textContent = t('copied');
   setTimeout(() => { button.textContent = original; }, 1200);
 }
 
-$('add-account').addEventListener('click', () => {
-  state.accounts.push(C.newAccount(''));
-  render();
-});
-$('log-max').addEventListener('input', (e) => { state.log.maxSize = e.target.value; refreshOutput(); });
-$('log-keep').addEventListener('input', (e) => { state.log.keep = e.target.value; refreshOutput(); });
-$('copy-yaml').addEventListener('click', (e) => copyToClipboard(C.buildYAML(state, yamlText()), e.target));
-$('copy-secrets').addEventListener('click', (e) => copyToClipboard(C.buildSecrets(state, secretsText()), e.target));
-$('download-yaml').addEventListener('click', () => download('config.yaml', C.buildYAML(state, yamlText())));
-$('download-secrets').addEventListener('click', () => download('secrets.env', C.buildSecrets(state, secretsText())));
-$('lang-es').addEventListener('click', () => { lang = 'es'; render(); });
-$('lang-en').addEventListener('click', () => { lang = 'en'; render(); });
-$('import-btn').addEventListener('click', () => {
-  const status = $('import-status');
-  try {
-    loadFromYAML($('import-text').value);
-    render();
-    status.textContent = t('importOk');
-    status.style.color = 'var(--ok)';
-  } catch (err) {
-    status.textContent = t('importErr') + err.message;
-    status.style.color = 'var(--danger)';
-  }
-});
+/* ---------- wiring ---------- */
+
+$('lang-auto').addEventListener('click', () => setLang('auto'));
+$('lang-es').addEventListener('click', () => setLang('es'));
+$('lang-en').addEventListener('click', () => setLang('en'));
 
 render();
