@@ -11,8 +11,10 @@ function fullState() {
   const a = s.accounts[0];
   a.source.host = 'mail.midominio.com';
   a.source.user = 'usuario@midominio.com';
+  a.source.pwMode = 'var';
   a.source.pwVar = 'TRABAJO_PASS';
   a.dest.user = 'cuenta@gmail.com';
+  a.dest.pwMode = 'var';
   a.dest.pwVar = 'GMAIL_PASS';
   return s;
 }
@@ -58,8 +60,8 @@ test('el ciclo generar -> importar -> generar es estable', () => {
   s.accounts[0].interval = '90s';
   s.log = { maxSize: '2MB', keep: 0 };
   s.accounts.push(c.newAccount('personal'));
-  Object.assign(s.accounts[1].source, { host: 'imap.otro.net', user: 'yo@otro.net', pwVar: 'OTRO' });
-  Object.assign(s.accounts[1].dest, { user: 'yo@gmail.com', pwVar: 'GM' });
+  Object.assign(s.accounts[1].source, { host: 'imap.otro.net', user: 'yo@otro.net', pwMode: 'var', pwVar: 'OTRO' });
+  Object.assign(s.accounts[1].dest, { user: 'yo@gmail.com', pwMode: 'var', pwVar: 'GM' });
 
   const first = c.buildYAML(s, TEXT);
   const second = c.buildYAML(c.stateFromYAML(first), TEXT);
@@ -129,7 +131,10 @@ test('la validación detecta cada fallo', () => {
   assert.ok(codes(empty).includes('name'));
 
   const dup = fullState();
-  dup.accounts.push(c.newAccount('trabajo'));
+  const extra = c.newAccount('trabajo');
+  Object.assign(extra.source, { host: 'h', user: 'u', pwMode: 'var', pwVar: 'A' });
+  Object.assign(extra.dest, { user: 'u2', pwMode: 'var', pwVar: 'B' });
+  dup.accounts.push(extra);
   assert.ok(codes(dup).includes('dupName'));
 
   const noHost = fullState();
@@ -171,8 +176,8 @@ test('la validación detecta cada fallo', () => {
 test('secrets.env lista cada variable una sola vez', () => {
   const s = fullState();
   s.accounts.push(c.newAccount('otra'));
-  Object.assign(s.accounts[1].source, { host: 'h', user: 'u', pwVar: 'TRABAJO_PASS' });
-  Object.assign(s.accounts[1].dest, { user: 'u2', pwVar: 'NUEVA' });
+  Object.assign(s.accounts[1].source, { host: 'h', user: 'u', pwMode: 'var', pwVar: 'TRABAJO_PASS' });
+  Object.assign(s.accounts[1].dest, { user: 'u2', pwMode: 'var', pwVar: 'NUEVA' });
   const out = c.buildSecrets(s, TEXT);
   assert.strictEqual(out.match(/^TRABAJO_PASS=$/gm).length, 1);
   assert.ok(out.includes('NUEVA='));

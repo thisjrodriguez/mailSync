@@ -61,13 +61,15 @@ const goTo = (w, label) => {
 const byPlaceholder = (w, p) =>
   [...w.document.querySelectorAll('#main-inner input')].find((i) => i.placeholder === p);
 
-function fillAccount(w) {
+// fillAccount completes the form the way the page now starts: passwords typed.
+function fillAccount(w, opts) {
   type(byPlaceholder(w, 'trabajo'), 'trabajo');
   type(byPlaceholder(w, 'mail.midominio.com'), 'mail.midominio.com');
   type(byPlaceholder(w, 'usuario@midominio.com'), 'usuario@midominio.com');
-  type(byPlaceholder(w, 'ORIGEN_PASS'), 'TRABAJO_PASS');
   type(byPlaceholder(w, 'cuenta@gmail.com'), 'cuenta@gmail.com');
-  type(byPlaceholder(w, 'GMAIL_PASS'), 'GMAIL_PASS');
+  if (opts && opts.passwords === false) return;
+  w.document.querySelectorAll('#main-inner input[type=password]')
+    .forEach((input, i) => type(input, 'clave-' + i));
 }
 
 test('arranca en la primera cuenta y la lista en la barra lateral', () => {
@@ -78,52 +80,36 @@ test('arranca en la primera cuenta y la lista en la barra lateral', () => {
             mainText(w).toLowerCase().includes('origen'));
 });
 
-// By default the page never asks for a password. Typing one is opt-in.
-test('no hay ningún campo de contraseña salvo que se pida', () => {
+// Typing the password is the default, and the field is kept away from the
+// browser's password manager so it is not captured or autofilled.
+test('la contraseña se escribe por defecto y el campo no se autocompleta', () => {
   const w = loadPage();
-  assert.strictEqual(w.document.querySelectorAll('input[type=password]').length, 0);
-  ['config.yaml', 'secrets.env'].forEach((label) => {
-    goTo(w, label);
-    assert.strictEqual(w.document.querySelectorAll('input[type=password]').length, 0);
-  });
-});
-
-test('el modo "escribirla aquí" es opcional y mantiene el campo a salvo del gestor de contraseñas', () => {
-  const w = loadPage();
-  const literal = [...w.document.querySelectorAll('#main-inner input[type=radio]')]
-    .find((r) => r.parentElement.textContent.includes('Escribirla'));
-  assert.ok(literal, 'debería existir la opción de escribir la contraseña');
-  click(literal);
-
   const input = w.document.querySelector('#main-inner input[type=password]');
-  assert.ok(input, 'ahora sí debe haber un campo');
-  assert.strictEqual(input.getAttribute('autocomplete'), 'off', 'no debe ofrecerse al autocompletado');
+  assert.ok(input, 'debe haber un campo de contraseña desde el principio');
+  assert.strictEqual(input.getAttribute('autocomplete'), 'off');
   assert.strictEqual(input.getAttribute('data-lpignore'), 'true');
 
   type(input, 'clave-real');
   goTo(w, 'config.yaml');
   assert.ok(output(w).includes('password: clave-real'));
-  // The warning has to appear exactly when the file carries a secret.
-  assert.ok(/chmod 600/.test(mainText(w)), 'debe avisar de proteger el fichero');
 
   goTo(w, 'secrets.env');
   assert.ok(!output(w).includes('clave-real'), 'la contraseña escrita no va en secrets.env');
 });
 
-test('una contraseña escrita a medias se marca como error', () => {
+test('una contraseña vacía se marca como error', () => {
   const w = loadPage();
-  fillAccount(w);
-  const literal = [...w.document.querySelectorAll('#main-inner input[type=radio]')]
-    .find((r) => r.parentElement.textContent.includes('Escribirla'));
-  click(literal);
-  assert.ok($(w, 'status-chip').className.includes('bad'), 'sin valor debe contar como error');
+  fillAccount(w, { passwords: false });
+  assert.ok($(w, 'status-chip').className.includes('bad'), 'sin contraseña debe contar como error');
 });
 
-test('sin contraseñas en claro no aparece el aviso', () => {
+test('la interfaz no muestra avisos, solo la nota del pie', () => {
   const w = loadPage();
-  fillAccount(w);
+  assert.strictEqual(w.document.querySelectorAll('.notice').length, 0, 'no debe haber cajas de aviso');
+  const footer = w.document.querySelector('#main-inner footer');
+  assert.ok(/no guarda ni envía datos/i.test(footer.textContent), footer.textContent);
   goTo(w, 'config.yaml');
-  assert.ok(!/chmod 600/.test(mainText(w)), 'no debe avisar si no hay secretos en el fichero');
+  assert.strictEqual(w.document.querySelectorAll('.notice').length, 0);
 });
 
 test('rellenar el formulario produce un YAML válido y marca la configuración como correcta', () => {
@@ -137,14 +123,26 @@ test('rellenar el formulario produce un YAML válido y marca la configuración c
   const yaml = output(w);
   assert.ok(yaml.includes('name: trabajo'), yaml);
   assert.ok(yaml.includes('host: mail.midominio.com'));
-  assert.ok(yaml.includes('password: ${TRABAJO_PASS}'));
+  assert.ok(yaml.includes('password: clave-0'));
   assert.ok(yaml.includes('type: gmail'));
+});
 
+test('sigue pudiendo usarse una variable en vez de escribir la contraseña', () => {
+  const w = loadPage();
+  fillAccount(w, { passwords: false });
+  // Each click re-renders the panel, so the radios have to be looked up again.
+  for (let i = 0; i < 2; i++) {
+    const radio = [...w.document.querySelectorAll('#main-inner input[type=radio]')]
+      .filter((r) => r.parentElement.textContent.includes('variable'))[i];
+    click(radio);
+  }
+  type(byPlaceholder(w, 'ORIGEN_PASS'), 'TRABAJO_PASS');
+  type(byPlaceholder(w, 'GMAIL_PASS'), 'GMAIL_PASS');
+
+  goTo(w, 'config.yaml');
+  assert.ok(output(w).includes('password: ${TRABAJO_PASS}'));
   goTo(w, 'secrets.env');
-  const secrets = output(w);
-  assert.ok(secrets.includes('TRABAJO_PASS='));
-  assert.ok(secrets.includes('GMAIL_PASS='));
-  assert.ok(!secrets.includes('TRABAJO_PASS=a'), 'la plantilla no debe llevar valores');
+  assert.ok(output(w).includes('TRABAJO_PASS='));
 });
 
 test('el indicador cuenta los errores mientras falten datos', () => {

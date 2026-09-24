@@ -24,7 +24,7 @@
     return {
       preset: preset || 'custom',
       host: '', port: DEFAULT_PORT, user: '', tls: 'tls',
-      fingerprint: '', pwMode: 'var', pwVar: '', pwValue: '',
+      fingerprint: '', pwMode: 'literal', pwVar: '', pwValue: '',
     };
   }
 

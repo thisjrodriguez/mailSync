@@ -263,8 +263,7 @@ function literalPassword(ep) {
 
   return el('div', { style: 'margin-top:.45rem' },
     el('label', { text: t('pwValueLabel') }),
-    row,
-    el('div', { class: 'hint', html: t('pwLiteralHint') }));
+    row);
 }
 
 function renderFolders(acc) {
@@ -405,22 +404,11 @@ function renderMain() {
   const main = $('main-inner');
   main.textContent = '';
 
-  if (view.name === 'account' || view.name === 'log') {
-    main.append(el('div', { class: 'notice' },
-      el('strong', { text: t('privacyTitle') }),
-      el('span', { html: t('privacyBody') })));
-  }
-
   switch (view.name) {
     case 'account': renderAccountView(main); break;
     case 'log': renderLogView(main); break;
     case 'yaml':
       renderErrors(main);
-      if (C.hasPlainPasswords(state)) {
-        main.append(el('div', { class: 'notice danger' },
-          el('strong', { text: t('plainTitle') }),
-          el('span', { html: t('plainBody') })));
-      }
       outputView(main, 'config.yaml', t('outHint'), C.buildYAML(state, yamlText()), 'config.yaml');
       break;
     case 'secrets':
@@ -431,8 +419,10 @@ function renderMain() {
   }
 
   main.append(el('footer', {},
-    document.createTextNode(t('footer') + ' '),
-    el('a', { href: 'https://github.com/thisjrodriguez/mailSync', text: 'github.com/thisjrodriguez/mailSync' })));
+    el('div', { text: t('footerNote') }),
+    el('div', {},
+      document.createTextNode(t('footer') + ' '),
+      el('a', { href: 'https://github.com/thisjrodriguez/mailSync', text: 'github.com/thisjrodriguez/mailSync' }))));
 }
 
 /* afterEdit keeps typing cheap: only the parts that can change while a field
