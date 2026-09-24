@@ -57,6 +57,11 @@ abiertos, mailsync se niega a arrancar.
 
 ## Configuración
 
+> **¿No quieres escribir el YAML a mano?** Usa el
+> [generador de configuración](https://thisjrodriguez.github.io/mailSync/): rellenas un
+> formulario y te da el `config.yaml`. Funciona entero en tu navegador, no envía
+> nada a ningún sitio y nunca te pide contraseñas.
+
 ```yaml
 accounts:
   - name: trabajo

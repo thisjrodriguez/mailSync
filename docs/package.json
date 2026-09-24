@@ -1,0 +1,11 @@
+{
+  "name": "mailsync-config-generator",
+  "private": true,
+  "description": "Static config generator for mailsync. No network, no passwords.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}

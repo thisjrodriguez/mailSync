@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mailsync · generador de configuración</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0;
+    --accent: #0969da; --warn-bg: #fff8c5; --warn-line: #d4a72c;
+    --code-bg: #f6f8fa; --danger: #cf222e; --ok: #1a7f37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d;
+      --accent: #4493f8; --warn-bg: #282215; --warn-line: #9e6a03;
+      --code-bg: #151b23; --danger: #f85149; --ok: #3fb950;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem 4rem; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.8rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.15rem; margin: 2.5rem 0 .75rem; padding-bottom: .4rem; border-bottom: 1px solid var(--line); }
+  h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  p.lead { color: var(--muted); margin: 0 0 1.5rem; }
+  a { color: var(--accent); }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+  .notice {
+    background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 6px;
+    padding: .75rem 1rem; margin: 0 0 1.5rem; font-size: .9rem;
+  }
+  .notice strong { display: block; margin-bottom: .25rem; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+  .card-head h3 { margin: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .75rem 1rem; }
+  label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: .2rem; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font-size: .92rem; font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; min-height: 120px; resize: vertical; }
+  button {
+    font: inherit; font-size: .88rem; padding: .4rem .85rem; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--code-bg); color: var(--fg); cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.link { border: none; background: none; color: var(--danger); padding: .2rem .4rem; }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .folder-row { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+  .folder-row .arrow { color: var(--muted); }
+  .radios { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .88rem; }
+  .radios label { display: inline-flex; align-items: center; gap: .3rem; margin: 0; color: var(--fg); }
+  .hint { font-size: .78rem; color: var(--muted); margin-top: .2rem; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem; overflow-x: auto; font-size: .85rem; line-height: 1.5; margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .errors { color: var(--danger); font-size: .88rem; margin: .75rem 0; }
+  .errors ul { margin: .25rem 0; padding-left: 1.2rem; }
+  .ok { color: var(--ok); font-size: .88rem; }
+  .out-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-bottom: .5rem; flex-wrap: wrap; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <div>
+      <h1>mailsync</h1>
+      <p class="lead" data-i18n="lead">Generador de configuración. Rellena el formulario y copia el YAML.</p>
+    </div>
+    <div class="row">
+      <button id="lang-es" class="primary">Español</button>
+      <button id="lang-en">English</button>
+    </div>
+  </div>
+
+  <div class="notice">
+    <strong data-i18n="privacyTitle">Esta página no envía nada a ningún sitio.</strong>
+    <span data-i18n="privacyBody">Todo ocurre en tu navegador: no hay servidor detrás y no se puede probar ninguna conexión desde aquí. Por eso <b>no te pide contraseñas y no debes escribirlas</b>. Genera marcadores como <code>${TRABAJO_PASS}</code>; el valor real lo pones en tu máquina.</span>
+  </div>
+
+  <h2 data-i18n="accountsTitle">Cuentas</h2>
+  <div id="accounts"></div>
+  <button id="add-account" data-i18n="addAccount">Añadir cuenta</button>
+
+  <h2 data-i18n="logTitle">Log</h2>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label data-i18n="logMax">Tamaño máximo por fichero</label>
+        <input type="text" id="log-max" value="5MB" placeholder="5MB">
+        <div class="hint" data-i18n="logMaxHint">500KB, 5MB, 1GB o un número de bytes.</div>
+      </div>
+      <div>
+        <label data-i18n="logKeep">Copias rotadas</label>
+        <input type="number" id="log-keep" value="3" min="0" max="100">
+        <div class="hint" data-i18n="logKeepHint">El disco queda acotado a máximo × (copias + 1).</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 data-i18n="outTitle">config.yaml</h2>
+  <div id="errors" class="errors" hidden></div>
+  <div class="out-head">
+    <span id="out-status" class="ok"></span>
+    <div class="row">
+      <button id="copy-yaml" data-i18n="copy">Copiar</button>
+      <button id="download-yaml" data-i18n="download">Descargar</button>
+    </div>
+  </div>
+  <pre id="yaml-out"></pre>
+  <p class="hint" data-i18n="outHint">Guárdalo en <code>~/.config/mailsync/config.yaml</code> con permisos <code>0600</code>.</p>
+
+  <h2 data-i18n="secretsTitle">secrets.env</h2>
+  <p class="hint" data-i18n="secretsHint">Plantilla para las variables que has usado. Rellena los valores <b>en tu máquina</b>, nunca aquí.</p>
+  <div class="out-head">
+    <span></span>
+    <div class="row">
+      <button id="copy-secrets" data-i18n="copy">Copiar</button>
+      <button id="download-secrets" data-i18n="download">Descargar</button>
+    </div>
+  </div>
+  <pre id="secrets-out"></pre>
+
+  <h2 data-i18n="importTitle">Importar</h2>
+  <p class="hint" data-i18n="importHint">Pega un config.yaml existente para editarlo en el formulario.</p>
+  <textarea id="import-text" spellcheck="false" placeholder="accounts:&#10;  - name: trabajo&#10;    ..."></textarea>
+  <div class="row" style="margin-top:.5rem">
+    <button id="import-btn" data-i18n="importBtn">Cargar en el formulario</button>
+    <span id="import-status" class="hint"></span>
+  </div>
+
+  <footer>
+    <span data-i18n="footer">Parte de</span>
+    <a href="https://github.com/thisjrodriguez/mailSync">github.com/thisjrodriguez/mailSync</a>
+  </footer>
+</main>
+<script src="config.js"></script>
+<script src="strings.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

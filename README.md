@@ -59,6 +59,11 @@ refuses to run.
 
 ## Configuration
 
+> **Would rather not write the YAML by hand?** Use the
+> [configuration generator](https://thisjrodriguez.github.io/mailSync/): fill in a form
+> and it hands you the `config.yaml`. It runs entirely in your browser, sends
+> nothing anywhere and never asks for passwords.
+
 ```yaml
 accounts:
   - name: work
