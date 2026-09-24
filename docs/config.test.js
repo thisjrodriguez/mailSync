@@ -11,11 +11,9 @@ function fullState() {
   const a = s.accounts[0];
   a.source.host = 'mail.midominio.com';
   a.source.user = 'usuario@midominio.com';
-  a.source.pwMode = 'var';
-  a.source.pwVar = 'TRABAJO_PASS';
+  a.source.password = '${TRABAJO_PASS}';
   a.dest.user = 'cuenta@gmail.com';
-  a.dest.pwMode = 'var';
-  a.dest.pwVar = 'GMAIL_PASS';
+  a.dest.password = '${GMAIL_PASS}';
   return s;
 }
 
@@ -42,13 +40,13 @@ test('una carpeta renombrada se emite como from/to', () => {
   assert.ok(yaml.includes('      - from: INBOX.Sent\n        to: midominio/Enviados\n'));
 });
 
-test('el modo "preguntar" no escribe ninguna contraseña', () => {
+// Left empty, the line is omitted entirely and mailsync asks at startup.
+test('sin contraseña no se escribe la línea', () => {
   const s = fullState();
-  s.accounts[0].source.pwMode = 'prompt';
+  s.accounts[0].source.password = '';
   const yaml = c.buildYAML(s, TEXT);
   const source = yaml.slice(yaml.indexOf('source:'), yaml.indexOf('dest:'));
   assert.ok(!source.includes('password:'), 'no debe haber línea de contraseña');
-  assert.ok(source.includes('# sin contraseña aquí'));
 });
 
 test('el ciclo generar -> importar -> generar es estable', () => {
@@ -60,8 +58,8 @@ test('el ciclo generar -> importar -> generar es estable', () => {
   s.accounts[0].interval = '90s';
   s.log = { maxSize: '2MB', keep: 0 };
   s.accounts.push(c.newAccount('personal'));
-  Object.assign(s.accounts[1].source, { host: 'imap.otro.net', user: 'yo@otro.net', pwMode: 'var', pwVar: 'OTRO' });
-  Object.assign(s.accounts[1].dest, { user: 'yo@gmail.com', pwMode: 'var', pwVar: 'GM' });
+  Object.assign(s.accounts[1].source, { host: 'imap.otro.net', user: 'yo@otro.net', password: '${OTRO}' });
+  Object.assign(s.accounts[1].dest, { user: 'yo@gmail.com', password: '${GM}' });
 
   const first = c.buildYAML(s, TEXT);
   const second = c.buildYAML(c.stateFromYAML(first), TEXT);
@@ -78,13 +76,13 @@ test('importar recupera los campos uno a uno', () => {
   assert.strictEqual(ep.host, 'mail.midominio.com');
   assert.strictEqual(ep.port, 143);
   assert.strictEqual(ep.tls, 'starttls');
-  assert.strictEqual(ep.pwVar, 'TRABAJO_PASS');
+  assert.strictEqual(ep.password, '${TRABAJO_PASS}');
   assert.strictEqual(back.accounts[0].dest.preset, 'gmail');
 });
 
-// Importing your own file should give it back unchanged, literal password
-// included -- otherwise a round trip would silently drop it.
-test('una contraseña literal importada se conserva en su modo', () => {
+// Importing your own file must give it back unchanged, password included:
+// a round trip that silently dropped it would be worse than useless.
+test('una contraseña importada se conserva tal cual', () => {
   const yaml = [
     'accounts:',
     '  - name: x',
@@ -100,11 +98,8 @@ test('una contraseña literal importada se conserva en su modo', () => {
     '      - INBOX',
   ].join('\n');
   const state = c.stateFromYAML(yaml);
-  assert.strictEqual(state.accounts[0].source.pwMode, 'literal');
-  assert.strictEqual(state.accounts[0].source.pwValue, 'secreto-de-verdad');
-  assert.strictEqual(state.accounts[0].dest.pwMode, 'var');
-  assert.strictEqual(state.accounts[0].dest.pwVar, 'GM');
-  assert.ok(c.hasPlainPasswords(state));
+  assert.strictEqual(state.accounts[0].source.password, 'secreto-de-verdad');
+  assert.strictEqual(state.accounts[0].dest.password, '${GM}');
   // It must never leak into the secrets template, which is meant to be shared.
   assert.ok(!c.buildSecrets(state, {}).includes('secreto-de-verdad'));
 });
@@ -132,8 +127,8 @@ test('la validación detecta cada fallo', () => {
 
   const dup = fullState();
   const extra = c.newAccount('trabajo');
-  Object.assign(extra.source, { host: 'h', user: 'u', pwMode: 'var', pwVar: 'A' });
-  Object.assign(extra.dest, { user: 'u2', pwMode: 'var', pwVar: 'B' });
+  Object.assign(extra.source, { host: 'h', user: 'u', password: '${A}' });
+  Object.assign(extra.dest, { user: 'u2', password: '${B}' });
   dup.accounts.push(extra);
   assert.ok(codes(dup).includes('dupName'));
 
@@ -145,13 +140,9 @@ test('la validación detecta cada fallo', () => {
   badPort.accounts[0].source.port = 99999;
   assert.ok(codes(badPort).includes('port'));
 
-  const badVar = fullState();
-  badVar.accounts[0].source.pwVar = '2MAL';
-  assert.ok(codes(badVar).includes('varName'));
-
-  const noVar = fullState();
-  noVar.accounts[0].source.pwVar = '';
-  assert.ok(codes(noVar).includes('varMissing'));
+  const noPass = fullState();
+  noPass.accounts[0].source.password = '';
+  assert.ok(codes(noPass).includes('passwordMissing'));
 
   const badFp = fullState();
   badFp.accounts[0].source.fingerprint = 'abc';
@@ -176,8 +167,8 @@ test('la validación detecta cada fallo', () => {
 test('secrets.env lista cada variable una sola vez', () => {
   const s = fullState();
   s.accounts.push(c.newAccount('otra'));
-  Object.assign(s.accounts[1].source, { host: 'h', user: 'u', pwMode: 'var', pwVar: 'TRABAJO_PASS' });
-  Object.assign(s.accounts[1].dest, { user: 'u2', pwMode: 'var', pwVar: 'NUEVA' });
+  Object.assign(s.accounts[1].source, { host: 'h', user: 'u', password: '${TRABAJO_PASS}' });
+  Object.assign(s.accounts[1].dest, { user: 'u2', password: '${NUEVA}' });
   const out = c.buildSecrets(s, TEXT);
   assert.strictEqual(out.match(/^TRABAJO_PASS=$/gm).length, 1);
   assert.ok(out.includes('NUEVA='));

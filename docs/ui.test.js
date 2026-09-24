@@ -61,7 +61,6 @@ const goTo = (w, label) => {
 const byPlaceholder = (w, p) =>
   [...w.document.querySelectorAll('#main-inner input')].find((i) => i.placeholder === p);
 
-// fillAccount completes the form the way the page now starts: passwords typed.
 function fillAccount(w, opts) {
   type(byPlaceholder(w, 'trabajo'), 'trabajo');
   type(byPlaceholder(w, 'mail.midominio.com'), 'mail.midominio.com');
@@ -82,10 +81,13 @@ test('arranca en la primera cuenta y la lista en la barra lateral', () => {
 
 // Typing the password is the default, and the field is kept away from the
 // browser's password manager so it is not captured or autofilled.
-test('la contraseña se escribe por defecto y el campo no se autocompleta', () => {
+test('la contraseña se escribe en su campo, sin opciones intermedias', () => {
   const w = loadPage();
-  const input = w.document.querySelector('#main-inner input[type=password]');
-  assert.ok(input, 'debe haber un campo de contraseña desde el principio');
+  assert.strictEqual(w.document.querySelectorAll('#main-inner input[type=radio]').length, 0,
+    'no debe haber modos que elegir: se escribe y ya');
+  const inputs = w.document.querySelectorAll('#main-inner input[type=password]');
+  assert.strictEqual(inputs.length, 2, 'uno para el origen y otro para el destino');
+  const input = inputs[0];
   assert.strictEqual(input.getAttribute('autocomplete'), 'off');
   assert.strictEqual(input.getAttribute('data-lpignore'), 'true');
 
@@ -127,22 +129,21 @@ test('rellenar el formulario produce un YAML válido y marca la configuración c
   assert.ok(yaml.includes('type: gmail'));
 });
 
-test('sigue pudiendo usarse una variable en vez de escribir la contraseña', () => {
+// The same field also accepts a ${VAR} placeholder, and then the secrets
+// template picks it up. One field covers both ways of doing it.
+test('escribir un marcador ${VAR} lo lleva a secrets.env', () => {
   const w = loadPage();
   fillAccount(w, { passwords: false });
-  // Each click re-renders the panel, so the radios have to be looked up again.
-  for (let i = 0; i < 2; i++) {
-    const radio = [...w.document.querySelectorAll('#main-inner input[type=radio]')]
-      .filter((r) => r.parentElement.textContent.includes('variable'))[i];
-    click(radio);
-  }
-  type(byPlaceholder(w, 'ORIGEN_PASS'), 'TRABAJO_PASS');
-  type(byPlaceholder(w, 'GMAIL_PASS'), 'GMAIL_PASS');
+  const fields = [...w.document.querySelectorAll('#main-inner input[type=password]')];
+  type(fields[0], '${TRABAJO_PASS}');
+  type(fields[1], 'clave-directa');
 
   goTo(w, 'config.yaml');
   assert.ok(output(w).includes('password: ${TRABAJO_PASS}'));
+  assert.ok(output(w).includes('password: clave-directa'));
   goTo(w, 'secrets.env');
   assert.ok(output(w).includes('TRABAJO_PASS='));
+  assert.ok(!output(w).includes('clave-directa'), 'una contraseña escrita no va en la plantilla');
 });
 
 test('el indicador cuenta los errores mientras falten datos', () => {

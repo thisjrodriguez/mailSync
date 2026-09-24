@@ -16,7 +16,6 @@
   const DEFAULT_LOG = { maxSize: '5MB', keep: 3 };
 
   const GO_DURATION = /^(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+$/;
-  const VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
   const SIZE = /^\d+(\.\d+)?\s*(GB|MB|KB|G|M|K|B)?$/i;
   const PLACEHOLDER = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
@@ -24,7 +23,7 @@
     return {
       preset: preset || 'custom',
       host: '', port: DEFAULT_PORT, user: '', tls: 'tls',
-      fingerprint: '', pwMode: 'literal', pwVar: '', pwValue: '',
+      fingerprint: '', password: '',
     };
   }
 
@@ -73,10 +72,10 @@
       if (Number(ep.port) !== DEFAULT_PORT) out += indent + 'port: ' + Number(ep.port) + '\n';
     }
     out += indent + 'user: ' + scalar(ep.user) + '\n';
-    if (ep.pwMode === 'prompt') out += indent + '# ' + promptComment + '\n';
-    else if (ep.pwMode === 'literal') {
-      if (ep.pwValue) out += indent + 'password: ' + scalar(ep.pwValue) + '\n';
-    } else if (ep.pwVar) out += indent + 'password: ${' + ep.pwVar + '}\n';
+    // The field holds whatever goes after "password:" -- a real password or a
+    // ${VAR} placeholder. Left empty, the line is omitted and mailsync asks
+    // for it at startup.
+    if (ep.password) out += indent + 'password: ' + scalar(ep.password) + '\n';
     if (ep.preset !== 'gmail' && ep.tls !== 'tls') out += indent + 'tls: ' + ep.tls + '\n';
     if (ep.fingerprint) out += indent + 'fingerprint: ' + ep.fingerprint.replace(/[\s:-]/g, '').toLowerCase() + '\n';
     return out;
@@ -111,21 +110,17 @@
     return out;
   }
 
+  // variableNames picks up any ${VAR} used as a password, so the secrets
+  // template lists exactly what needs filling in.
   function variableNames(state) {
     const names = [];
     state.accounts.forEach((acc) => {
       [acc.source, acc.dest].forEach((ep) => {
-        if (ep.pwMode === 'var' && ep.pwVar && !names.includes(ep.pwVar)) names.push(ep.pwVar);
+        const match = PLACEHOLDER.exec(ep.password || '');
+        if (match && !names.includes(match[1])) names.push(match[1]);
       });
     });
     return names;
-  }
-
-  // hasPlainPasswords reports whether the generated file would carry a secret
-  // in the clear, so the interface can say so where it matters.
-  function hasPlainPasswords(state) {
-    return state.accounts.some((acc) =>
-      [acc.source, acc.dest].some((ep) => ep.pwMode === 'literal' && ep.pwValue));
   }
 
   function buildSecrets(state, text) {
@@ -158,9 +153,7 @@
         if (ep.preset !== 'gmail' && (!Number.isInteger(port) || port < 1 || port > 65535)) {
           add('port', label, side);
         }
-        if (ep.pwMode === 'var' && !ep.pwVar.trim()) add('varMissing', label, side);
-        else if (ep.pwMode === 'var' && !VAR_NAME.test(ep.pwVar)) add('varName', label, side);
-        if (ep.pwMode === 'literal' && !ep.pwValue) add('literalMissing', label, side);
+        if (!ep.password) add('passwordMissing', label, side);
         if (ep.fingerprint && !/^[0-9a-f]{64}$/i.test(ep.fingerprint.replace(/[\s:-]/g, ''))) {
           add('fingerprint', label, side);
         }
@@ -272,10 +265,7 @@
     ep.user = raw.user || '';
     ep.tls = raw.tls || (Number(ep.port) === 143 ? 'starttls' : 'tls');
     ep.fingerprint = raw.fingerprint || '';
-    const match = PLACEHOLDER.exec(raw.password || '');
-    if (match) { ep.pwMode = 'var'; ep.pwVar = match[1]; }
-    else if (raw.password) { ep.pwMode = 'literal'; ep.pwValue = raw.password; }
-    else { ep.pwMode = 'prompt'; }
+    ep.password = raw.password || '';
     return ep;
   }
 
@@ -308,7 +298,7 @@
   return {
     DEFAULT_INTERVAL, DEFAULT_PORT, DEFAULT_LOG,
     newEndpoint, newAccount, newState,
-    needsQuotes, scalar, buildYAML, buildSecrets, variableNames, hasPlainPasswords,
+    needsQuotes, scalar, buildYAML, buildSecrets, variableNames,
     validate, parseYAML, stateFromYAML,
   };
 }));

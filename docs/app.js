@@ -227,29 +227,9 @@ function renderEndpoint(acc, key) {
   grid.append(field(t('user'), textInput(ep.user, userHint, (v) => { ep.user = v; })));
   body.append(grid);
 
-  // Password: a variable name, or nothing at all. Never a password field.
-  const pw = el('div', { class: 'field-block', style: 'margin-top:.85rem' },
-    el('label', { text: t('password') }));
-  const radios = el('div', { class: 'radios' });
-  const group = 'pw-' + view.account + '-' + key;
-  [['var', t('pwVar')], ['prompt', t('pwPrompt')], ['literal', t('pwLiteral')]].forEach(([mode, label]) => {
-    const radio = el('input', { type: 'radio', name: group });
-    radio.checked = ep.pwMode === mode;
-    radio.addEventListener('change', () => { ep.pwMode = mode; render(); });
-    radios.append(el('label', {}, radio, document.createTextNode(label)));
-  });
-  pw.append(radios);
-
-  if (ep.pwMode === 'var') {
-    const hint = key === 'source' ? 'ORIGEN_PASS' : (ep.preset === 'gmail' ? 'GMAIL_PASS' : 'DESTINO_PASS');
-    pw.append(el('div', { style: 'margin-top:.5rem' },
-      textInput(ep.pwVar, hint, (v) => { ep.pwVar = v.toUpperCase(); })));
-  } else if (ep.pwMode === 'literal') {
-    pw.append(literalPassword(ep));
-  } else {
-    pw.append(el('div', { class: 'hint', text: t('pwPromptHint') }));
-  }
-  body.append(pw);
+  body.append(el('div', { class: 'field-block', style: 'margin-top:.85rem' },
+    el('label', { text: t('password') }),
+    passwordField(ep)));
 
   body.append(el('div', { class: 'field-block', style: 'margin-top:.85rem' },
     field(t('fingerprint'), textInput(ep.fingerprint, '', (v) => { ep.fingerprint = v; }), t('fingerprintHint'))));
@@ -259,10 +239,10 @@ function renderEndpoint(acc, key) {
   return section(label, badge, body);
 }
 
-// literalPassword is the opt-in field for typing a password straight into the
-// config. It is masked, kept away from the browser's password manager, and
-// never persisted: the value lives in memory until the tab is closed.
-function literalPassword(ep) {
+// passwordField holds whatever goes after "password:" in the YAML. It is
+// masked by default and kept away from the browser's password manager, so it
+// is neither captured nor autofilled.
+function passwordField(ep) {
   const input = el('input', {
     type: 'password',
     autocomplete: 'off',
@@ -272,8 +252,8 @@ function literalPassword(ep) {
     'data-lpignore': 'true',
     'data-1p-ignore': 'true',
   });
-  input.value = ep.pwValue || '';
-  input.addEventListener('input', () => { ep.pwValue = input.value; afterEdit(); });
+  input.value = ep.password || '';
+  input.addEventListener('input', () => { ep.password = input.value; afterEdit(); });
 
   const toggle = el('button', { class: 'pw-toggle', type: 'button', 'aria-label': t('show'), title: t('show') });
   toggle.append(icon('eye'));
@@ -287,7 +267,7 @@ function literalPassword(ep) {
     toggle.setAttribute('title', label);
   });
 
-  return el('div', { class: 'pw-wrap', style: 'margin-top:.5rem' }, input, toggle);
+  return el('div', { class: 'pw-wrap' }, input, toggle);
 }
 
 function renderFolders(acc) {
