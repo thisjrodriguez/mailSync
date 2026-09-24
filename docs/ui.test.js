@@ -29,7 +29,12 @@ function loadPage(options) {
 
   const errors = [];
   window.addEventListener('error', (e) => errors.push(e.error || e.message));
-  for (const file of ['config.js', 'strings.js', 'app.js']) {
+  // Load exactly the files index.html asks for, so a renamed or forgotten
+  // script is caught here too.
+  const scriptSources = [...fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8')
+    .matchAll(/<script src="([^"?]+)/g)].map((m) => m[1]);
+  assert.deepStrictEqual(scriptSources, ['config.js', 'strings.js', 'app.js']);
+  for (const file of scriptSources) {
     const script = window.document.createElement('script');
     script.textContent = fs.readFileSync(path.join(__dirname, file), 'utf8');
     window.document.body.append(script);

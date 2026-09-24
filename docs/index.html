@@ -138,8 +138,11 @@
 
 <input type="file" id="file-input" accept=".yaml,.yml,.txt,text/plain" hidden>
 
-<script src="config.js"></script>
-<script src="strings.js"></script>
-<script src="app.js"></script>
+<!-- The ?v= query busts the CDN cache: GitHub Pages serves assets for a
+     while, and a stale script against fresh markup breaks the page. Bump it
+     whenever these files change. -->
+<script src="config.js?v=2"></script>
+<script src="strings.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
