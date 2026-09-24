@@ -80,9 +80,9 @@ test('importar recupera los campos uno a uno', () => {
   assert.strictEqual(back.accounts[0].dest.preset, 'gmail');
 });
 
-// A config file someone hands you may have a real password in it. It must not
-// be pulled into the form, where it could end up back on screen or in a copy.
-test('una contraseña literal importada no se conserva', () => {
+// Importing your own file should give it back unchanged, literal password
+// included -- otherwise a round trip would silently drop it.
+test('una contraseña literal importada se conserva en su modo', () => {
   const yaml = [
     'accounts:',
     '  - name: x',
@@ -98,9 +98,13 @@ test('una contraseña literal importada no se conserva', () => {
     '      - INBOX',
   ].join('\n');
   const state = c.stateFromYAML(yaml);
-  assert.strictEqual(state.accounts[0].source.pwVar, '');
-  assert.ok(!JSON.stringify(state).includes('secreto-de-verdad'), 'la contraseña no debe quedar en el estado');
+  assert.strictEqual(state.accounts[0].source.pwMode, 'literal');
+  assert.strictEqual(state.accounts[0].source.pwValue, 'secreto-de-verdad');
+  assert.strictEqual(state.accounts[0].dest.pwMode, 'var');
   assert.strictEqual(state.accounts[0].dest.pwVar, 'GM');
+  assert.ok(c.hasPlainPasswords(state));
+  // It must never leak into the secrets template, which is meant to be shared.
+  assert.ok(!c.buildSecrets(state, {}).includes('secreto-de-verdad'));
 });
 
 test('el entrecomillado solo se aplica cuando hace falta', () => {

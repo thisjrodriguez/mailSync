@@ -105,6 +105,10 @@ The `config.yaml` then holds no secrets, so you can share or version it.
 **In an environment variable** of the same name. It takes precedence over the
 file, which is what makes this convenient for containers and systemd.
 
+**Straight in the config.** You can write it into `password:` as is. That is the
+most convenient and the least protected: it sits there in the clear, so keep the
+file at `0600` and never commit it.
+
 **Nowhere at all.** Drop the `password` line and mailsync asks for it at
 startup, without echoing it as you type:
 

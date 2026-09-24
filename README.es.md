@@ -103,6 +103,10 @@ Así el `config.yaml` no contiene secretos y puedes compartirlo o versionarlo.
 **En una variable de entorno** con ese mismo nombre. Tiene prioridad sobre el
 fichero, que es lo práctico para contenedores y para systemd.
 
+**Directamente en el config.** Puedes escribirla tal cual en `password:`. Es lo
+más cómodo y lo menos protegido: queda en claro en el fichero, así que déjalo en
+`0600` y no lo subas a ningún repositorio.
+
 **Sin guardarla en ningún sitio.** Quita la línea `password` y mailsync te la
 pedirá al arrancar, sin mostrarla mientras la escribes:
 

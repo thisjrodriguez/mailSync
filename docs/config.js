@@ -24,7 +24,7 @@
     return {
       preset: preset || 'custom',
       host: '', port: DEFAULT_PORT, user: '', tls: 'tls',
-      fingerprint: '', pwMode: 'var', pwVar: '',
+      fingerprint: '', pwMode: 'var', pwVar: '', pwValue: '',
     };
   }
 
@@ -74,7 +74,9 @@
     }
     out += indent + 'user: ' + scalar(ep.user) + '\n';
     if (ep.pwMode === 'prompt') out += indent + '# ' + promptComment + '\n';
-    else if (ep.pwVar) out += indent + 'password: ${' + ep.pwVar + '}\n';
+    else if (ep.pwMode === 'literal') {
+      if (ep.pwValue) out += indent + 'password: ' + scalar(ep.pwValue) + '\n';
+    } else if (ep.pwVar) out += indent + 'password: ${' + ep.pwVar + '}\n';
     if (ep.preset !== 'gmail' && ep.tls !== 'tls') out += indent + 'tls: ' + ep.tls + '\n';
     if (ep.fingerprint) out += indent + 'fingerprint: ' + ep.fingerprint.replace(/[\s:-]/g, '').toLowerCase() + '\n';
     return out;
@@ -119,6 +121,13 @@
     return names;
   }
 
+  // hasPlainPasswords reports whether the generated file would carry a secret
+  // in the clear, so the interface can say so where it matters.
+  function hasPlainPasswords(state) {
+    return state.accounts.some((acc) =>
+      [acc.source, acc.dest].some((ep) => ep.pwMode === 'literal' && ep.pwValue));
+  }
+
   function buildSecrets(state, text) {
     const names = variableNames(state);
     if (names.length === 0) return '# ' + ((text && text.noVars) || 'no variables used') + '\n';
@@ -151,6 +160,7 @@
         }
         if (ep.pwMode === 'var' && !ep.pwVar.trim()) add('varMissing', label, side);
         else if (ep.pwMode === 'var' && !VAR_NAME.test(ep.pwVar)) add('varName', label, side);
+        if (ep.pwMode === 'literal' && !ep.pwValue) add('literalMissing', label, side);
         if (ep.fingerprint && !/^[0-9a-f]{64}$/i.test(ep.fingerprint.replace(/[\s:-]/g, ''))) {
           add('fingerprint', label, side);
         }
@@ -264,13 +274,8 @@
     ep.fingerprint = raw.fingerprint || '';
     const match = PLACEHOLDER.exec(raw.password || '');
     if (match) { ep.pwMode = 'var'; ep.pwVar = match[1]; }
-    else if (raw.password) {
-      // A literal password in an imported file is never carried into the form.
-      ep.pwMode = 'var';
-      ep.pwVar = '';
-    } else {
-      ep.pwMode = 'prompt';
-    }
+    else if (raw.password) { ep.pwMode = 'literal'; ep.pwValue = raw.password; }
+    else { ep.pwMode = 'prompt'; }
     return ep;
   }
 
@@ -303,7 +308,7 @@
   return {
     DEFAULT_INTERVAL, DEFAULT_PORT, DEFAULT_LOG,
     newEndpoint, newAccount, newState,
-    needsQuotes, scalar, buildYAML, buildSecrets, variableNames,
+    needsQuotes, scalar, buildYAML, buildSecrets, variableNames, hasPlainPasswords,
     validate, parseYAML, stateFromYAML,
   };
 }));

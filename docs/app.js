@@ -209,7 +209,7 @@ function renderEndpoint(acc, key) {
   const pw = el('div', { style: 'margin-top:.7rem' }, el('label', { text: t('password') }));
   const radios = el('div', { class: 'radios' });
   const group = 'pw-' + view.account + '-' + key;
-  [['var', t('pwVar')], ['prompt', t('pwPrompt')]].forEach(([mode, label]) => {
+  [['var', t('pwVar')], ['prompt', t('pwPrompt')], ['literal', t('pwLiteral')]].forEach(([mode, label]) => {
     const radio = el('input', { type: 'radio', name: group });
     radio.checked = ep.pwMode === mode;
     radio.addEventListener('change', () => { ep.pwMode = mode; render(); });
@@ -221,6 +221,8 @@ function renderEndpoint(acc, key) {
     const hint = key === 'source' ? 'ORIGEN_PASS' : (ep.preset === 'gmail' ? 'GMAIL_PASS' : 'DESTINO_PASS');
     pw.append(el('div', { class: 'grid', style: 'margin-top:.45rem' },
       field(t('pwVarName'), textInput(ep.pwVar, hint, (v) => { ep.pwVar = v.toUpperCase(); }))));
+  } else if (ep.pwMode === 'literal') {
+    pw.append(literalPassword(ep));
   } else {
     pw.append(el('div', { class: 'hint', text: t('pwPromptHint') }));
   }
@@ -229,6 +231,40 @@ function renderEndpoint(acc, key) {
   box.append(el('div', { class: 'grid', style: 'margin-top:.7rem' },
     field(t('fingerprint'), textInput(ep.fingerprint, '', (v) => { ep.fingerprint = v; }), t('fingerprintHint'))));
   return box;
+}
+
+// literalPassword is the opt-in field for typing a password straight into the
+// config. It is masked, kept away from the browser's password manager, and
+// never persisted: the value lives in memory until the tab is closed.
+function literalPassword(ep) {
+  const input = el('input', {
+    type: 'password',
+    autocomplete: 'off',
+    autocapitalize: 'off',
+    autocorrect: 'off',
+    spellcheck: 'false',
+    'data-lpignore': 'true',
+    'data-1p-ignore': 'true',
+  });
+  input.value = ep.pwValue || '';
+  input.addEventListener('input', () => { ep.pwValue = input.value; afterEdit(); });
+
+  const toggle = el('button', {
+    class: 'btn', type: 'button', text: t('show'),
+    onclick: () => {
+      const masked = input.type === 'password';
+      input.type = masked ? 'text' : 'password';
+      toggle.textContent = masked ? t('hide') : t('show');
+    },
+  });
+
+  const row = el('div', { class: 'row', style: 'margin-top:.2rem; flex-wrap:nowrap' }, input, toggle);
+  input.style.flex = '1';
+
+  return el('div', { style: 'margin-top:.45rem' },
+    el('label', { text: t('pwValueLabel') }),
+    row,
+    el('div', { class: 'hint', html: t('pwLiteralHint') }));
 }
 
 function renderFolders(acc) {
@@ -380,6 +416,11 @@ function renderMain() {
     case 'log': renderLogView(main); break;
     case 'yaml':
       renderErrors(main);
+      if (C.hasPlainPasswords(state)) {
+        main.append(el('div', { class: 'notice danger' },
+          el('strong', { text: t('plainTitle') }),
+          el('span', { html: t('plainBody') })));
+      }
       outputView(main, 'config.yaml', t('outHint'), C.buildYAML(state, yamlText()), 'config.yaml');
       break;
     case 'secrets':

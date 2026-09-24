@@ -78,15 +78,52 @@ test('arranca en la primera cuenta y la lista en la barra lateral', () => {
             mainText(w).toLowerCase().includes('origen'));
 });
 
-// The whole point of the page: it must never ask for a password.
-test('ninguna vista contiene un campo de contraseña', () => {
+// By default the page never asks for a password. Typing one is opt-in.
+test('no hay ningún campo de contraseña salvo que se pida', () => {
   const w = loadPage();
+  assert.strictEqual(w.document.querySelectorAll('input[type=password]').length, 0);
   ['config.yaml', 'secrets.env'].forEach((label) => {
     goTo(w, label);
     assert.strictEqual(w.document.querySelectorAll('input[type=password]').length, 0);
   });
-  assert.strictEqual(w.document.querySelectorAll('input[type=password]').length, 0);
-  assert.ok(!w.document.body.innerHTML.toLowerCase().includes('type="password"'));
+});
+
+test('el modo "escribirla aquí" es opcional y mantiene el campo a salvo del gestor de contraseñas', () => {
+  const w = loadPage();
+  const literal = [...w.document.querySelectorAll('#main-inner input[type=radio]')]
+    .find((r) => r.parentElement.textContent.includes('Escribirla'));
+  assert.ok(literal, 'debería existir la opción de escribir la contraseña');
+  click(literal);
+
+  const input = w.document.querySelector('#main-inner input[type=password]');
+  assert.ok(input, 'ahora sí debe haber un campo');
+  assert.strictEqual(input.getAttribute('autocomplete'), 'off', 'no debe ofrecerse al autocompletado');
+  assert.strictEqual(input.getAttribute('data-lpignore'), 'true');
+
+  type(input, 'clave-real');
+  goTo(w, 'config.yaml');
+  assert.ok(output(w).includes('password: clave-real'));
+  // The warning has to appear exactly when the file carries a secret.
+  assert.ok(/chmod 600/.test(mainText(w)), 'debe avisar de proteger el fichero');
+
+  goTo(w, 'secrets.env');
+  assert.ok(!output(w).includes('clave-real'), 'la contraseña escrita no va en secrets.env');
+});
+
+test('una contraseña escrita a medias se marca como error', () => {
+  const w = loadPage();
+  fillAccount(w);
+  const literal = [...w.document.querySelectorAll('#main-inner input[type=radio]')]
+    .find((r) => r.parentElement.textContent.includes('Escribirla'));
+  click(literal);
+  assert.ok($(w, 'status-chip').className.includes('bad'), 'sin valor debe contar como error');
+});
+
+test('sin contraseñas en claro no aparece el aviso', () => {
+  const w = loadPage();
+  fillAccount(w);
+  goTo(w, 'config.yaml');
+  assert.ok(!/chmod 600/.test(mainText(w)), 'no debe avisar si no hay secretos en el fichero');
 });
 
 test('rellenar el formulario produce un YAML válido y marca la configuración como correcta', () => {
