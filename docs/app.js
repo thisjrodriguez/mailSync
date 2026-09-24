@@ -97,7 +97,9 @@ function renderEndpoint(acc, key, side) {
     grid.append(field(t('security'), tls));
   }
 
-  grid.append(field(t('user'), textInput(ep.user, 'usuario@midominio.com', (v) => { ep.user = v; })));
+  const userHint = ep.preset === 'gmail' ? 'cuenta@gmail.com'
+    : (key === 'source' ? 'usuario@midominio.com' : 'usuario@destino.com');
+  grid.append(field(t('user'), textInput(ep.user, userHint, (v) => { ep.user = v; })));
   box.append(grid);
 
   // Password: a variable name or nothing at all. Never a password field.
@@ -122,7 +124,8 @@ function renderEndpoint(acc, key, side) {
     const varGrid = document.createElement('div');
     varGrid.className = 'grid';
     varGrid.style.marginTop = '.5rem';
-    varGrid.append(field(t('pwVarName'), textInput(ep.pwVar, 'TRABAJO_PASS', (v) => { ep.pwVar = v.toUpperCase(); })));
+    const varHint = key === 'source' ? 'ORIGEN_PASS' : (ep.preset === 'gmail' ? 'GMAIL_PASS' : 'DESTINO_PASS');
+    varGrid.append(field(t('pwVarName'), textInput(ep.pwVar, varHint, (v) => { ep.pwVar = v.toUpperCase(); })));
     pwWrap.append(varGrid);
   } else {
     const h = document.createElement('div');

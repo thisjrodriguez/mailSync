@@ -55,15 +55,13 @@ test('rellenar el formulario produce un YAML válido', () => {
   // Orden: nombre, intervalo, [origen] host, usuario, variable, fingerprint,
   //        [destino] usuario, variable, fingerprint, [carpetas] from, to
   type(inputs[0], 'trabajo');
-  const texts = [...w.document.querySelectorAll('#accounts input[type=text]')];
-  const byPlaceholder = (p) => texts.find((i) => i.placeholder === p);
+  const byPlaceholder = (p) =>
+    [...w.document.querySelectorAll('#accounts input[type=text]')].find((i) => i.placeholder === p);
   type(byPlaceholder('mail.midominio.com'), 'mail.midominio.com');
-  const users = texts.filter((i) => i.placeholder === 'usuario@midominio.com');
-  type(users[0], 'usuario@midominio.com');
-  type(users[1], 'cuenta@gmail.com');
-  const vars = texts.filter((i) => i.placeholder === 'TRABAJO_PASS');
-  type(vars[0], 'TRABAJO_PASS');
-  type(vars[1], 'GMAIL_PASS');
+  type(byPlaceholder('usuario@midominio.com'), 'usuario@midominio.com');
+  type(byPlaceholder('cuenta@gmail.com'), 'cuenta@gmail.com');
+  type(byPlaceholder('ORIGEN_PASS'), 'TRABAJO_PASS');
+  type(byPlaceholder('GMAIL_PASS'), 'GMAIL_PASS');
 
   const yaml = $(w, 'yaml-out').textContent;
   assert.ok(yaml.includes('name: trabajo'));
