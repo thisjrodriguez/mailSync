@@ -189,7 +189,7 @@ test('añadir y quitar carpetas', () => {
   click(add);
   assert.strictEqual(w.document.querySelectorAll('.folder-row').length, before + 1);
 
-  click(w.document.querySelector('.folder-row button.icon'));
+  click(w.document.querySelector('.folder-row .icon-btn'));
   assert.strictEqual(w.document.querySelectorAll('.folder-row').length, before);
 });
 
@@ -304,4 +304,43 @@ test('no queda ninguna clave de traducción sin definir', () => {
     assert.deepStrictEqual(missing, [], 'faltan claves en "' + lang + '": ' + missing.join(', '));
   }
   assert.deepStrictEqual(Object.keys(strings.es).sort(), Object.keys(strings.en).sort());
+});
+
+test('el botón de ver la contraseña es un ojo dentro del campo', () => {
+  const w = loadPage();
+  const wrap = w.document.querySelector('#main-inner .pw-wrap');
+  assert.ok(wrap, 'el campo debe ir envuelto para poder llevar el icono dentro');
+
+  const input = wrap.querySelector('input[type=password]');
+  const toggle = wrap.querySelector('.pw-toggle');
+  assert.ok(input && toggle, 'deben convivir el campo y el botón');
+  assert.ok(toggle.querySelector('svg'), 'el botón debe ser un icono, no texto');
+  assert.strictEqual(toggle.textContent.trim(), '', 'no debe llevar texto');
+  assert.ok(toggle.getAttribute('aria-label'), 'necesita etiqueta accesible');
+
+  click(toggle);
+  assert.strictEqual(input.type, 'text', 'al pulsarlo se ve la contraseña');
+  click(toggle);
+  assert.strictEqual(input.type, 'password', 'y al volver a pulsarlo se oculta');
+});
+
+test('cada bloque del formulario va en su propia tarjeta', () => {
+  const w = loadPage();
+  const heads = [...w.document.querySelectorAll('#main-inner .section .section-head')]
+    .map((h) => h.textContent);
+  assert.ok(heads.length >= 4, 'se esperaban varias secciones, hay ' + heads.length);
+  assert.ok(heads.some((h) => /general/i.test(h)));
+  assert.ok(heads.some((h) => /origen/i.test(h)));
+  assert.ok(heads.some((h) => /destino/i.test(h)));
+  assert.ok(heads.some((h) => /carpetas/i.test(h)));
+});
+
+test('quitar una carpeta usa un icono de papelera', () => {
+  const w = loadPage();
+  const remove = w.document.querySelector('.folder-row .icon-btn');
+  assert.ok(remove.querySelector('svg'), 'debe ser un icono');
+  assert.ok(remove.getAttribute('aria-label'), 'necesita etiqueta accesible');
+  const before = w.document.querySelectorAll('.folder-row').length;
+  click(remove);
+  assert.strictEqual(w.document.querySelectorAll('.folder-row').length, before - 1);
 });

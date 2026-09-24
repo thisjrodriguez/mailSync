@@ -55,6 +55,28 @@ function el(tag, props, ...children) {
   return node;
 }
 
+// Inline SVGs keep the page a single self-contained unit: no icon font, no
+// extra request, and they inherit the surrounding colour.
+const ICONS = {
+  eye: '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+  eyeOff: '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.3 3.7A6.6 6.6 0 0 1 8 3.5c4 0 6.5 4.5 6.5 4.5a12 12 0 0 1-2 2.6M4.2 4.7A12 12 0 0 0 1.5 8S4 12.5 8 12.5c.7 0 1.3-.1 1.9-.3M2 2l12 12"/>',
+  trash: '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4"/>',
+};
+
+function icon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = ICONS[name];
+  return svg;
+}
+
+function section(title, badge, ...children) {
+  const head = el('div', { class: 'section-head' }, el('span', { text: title }));
+  if (badge) head.append(el('span', { class: 'badge', text: badge }));
+  return el('div', { class: 'section' }, head, children);
+}
+
 function field(labelText, input, hint) {
   const wrap = el('div', {}, el('label', { text: labelText }), input);
   if (hint) wrap.append(el('div', { class: 'hint', text: hint }));
@@ -178,7 +200,7 @@ function renderSidebar() {
 
 function renderEndpoint(acc, key) {
   const ep = acc[key];
-  const box = el('div', {}, el('h3', { text: key === 'source' ? t('source') : t('dest') }));
+  const body = el('div', {});
 
   const grid = el('div', { class: 'grid' });
   grid.append(field(t('preset'),
@@ -203,10 +225,11 @@ function renderEndpoint(acc, key) {
   const userHint = ep.preset === 'gmail' ? 'cuenta@gmail.com'
     : (key === 'source' ? 'usuario@midominio.com' : 'usuario@destino.com');
   grid.append(field(t('user'), textInput(ep.user, userHint, (v) => { ep.user = v; })));
-  box.append(grid);
+  body.append(grid);
 
   // Password: a variable name, or nothing at all. Never a password field.
-  const pw = el('div', { style: 'margin-top:.7rem' }, el('label', { text: t('password') }));
+  const pw = el('div', { class: 'field-block', style: 'margin-top:.85rem' },
+    el('label', { text: t('password') }));
   const radios = el('div', { class: 'radios' });
   const group = 'pw-' + view.account + '-' + key;
   [['var', t('pwVar')], ['prompt', t('pwPrompt')], ['literal', t('pwLiteral')]].forEach(([mode, label]) => {
@@ -219,18 +242,21 @@ function renderEndpoint(acc, key) {
 
   if (ep.pwMode === 'var') {
     const hint = key === 'source' ? 'ORIGEN_PASS' : (ep.preset === 'gmail' ? 'GMAIL_PASS' : 'DESTINO_PASS');
-    pw.append(el('div', { class: 'grid', style: 'margin-top:.45rem' },
-      field(t('pwVarName'), textInput(ep.pwVar, hint, (v) => { ep.pwVar = v.toUpperCase(); }))));
+    pw.append(el('div', { style: 'margin-top:.5rem' },
+      textInput(ep.pwVar, hint, (v) => { ep.pwVar = v.toUpperCase(); })));
   } else if (ep.pwMode === 'literal') {
     pw.append(literalPassword(ep));
   } else {
     pw.append(el('div', { class: 'hint', text: t('pwPromptHint') }));
   }
-  box.append(pw);
+  body.append(pw);
 
-  box.append(el('div', { class: 'grid', style: 'margin-top:.7rem' },
+  body.append(el('div', { class: 'field-block', style: 'margin-top:.85rem' },
     field(t('fingerprint'), textInput(ep.fingerprint, '', (v) => { ep.fingerprint = v; }), t('fingerprintHint'))));
-  return box;
+
+  const label = key === 'source' ? t('source') : t('dest');
+  const badge = ep.preset === 'gmail' ? 'Gmail' : (ep.host || null);
+  return section(label, badge, body);
 }
 
 // literalPassword is the opt-in field for typing a password straight into the
@@ -249,48 +275,48 @@ function literalPassword(ep) {
   input.value = ep.pwValue || '';
   input.addEventListener('input', () => { ep.pwValue = input.value; afterEdit(); });
 
-  const toggle = el('button', {
-    class: 'btn', type: 'button', text: t('show'),
-    onclick: () => {
-      const masked = input.type === 'password';
-      input.type = masked ? 'text' : 'password';
-      toggle.textContent = masked ? t('hide') : t('show');
-    },
+  const toggle = el('button', { class: 'pw-toggle', type: 'button', 'aria-label': t('show'), title: t('show') });
+  toggle.append(icon('eye'));
+  toggle.addEventListener('click', () => {
+    const masked = input.type === 'password';
+    input.type = masked ? 'text' : 'password';
+    toggle.textContent = '';
+    toggle.append(icon(masked ? 'eyeOff' : 'eye'));
+    const label = masked ? t('hide') : t('show');
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('title', label);
   });
 
-  const row = el('div', { class: 'row', style: 'margin-top:.2rem; flex-wrap:nowrap' }, input, toggle);
-  input.style.flex = '1';
-
-  return el('div', { style: 'margin-top:.45rem' },
-    el('label', { text: t('pwValueLabel') }),
-    row);
+  return el('div', { class: 'pw-wrap', style: 'margin-top:.5rem' }, input, toggle);
 }
 
 function renderFolders(acc) {
-  const box = el('div', {}, el('h3', { text: t('folders') }));
+  const body = el('div', {});
   acc.folders.forEach((folder, i) => {
-    box.append(el('div', { class: 'folder-row' },
+    const remove = el('button', {
+      class: 'icon-btn', type: 'button', title: t('remove'), 'aria-label': t('remove'),
+      onclick: () => { acc.folders.splice(i, 1); render(); },
+    });
+    remove.append(icon('trash'));
+    body.append(el('div', { class: 'folder-row' },
       textInput(folder.from, t('folderFrom'), (v) => { folder.from = v; }),
-      el('span', { class: 'arrow', text: '→' }),
+      el('span', { class: 'arrow', text: '\u2192' }),
       textInput(folder.to, t('folderTo'), (v) => { folder.to = v; }),
-      el('button', {
-        class: 'icon', title: t('remove'), text: '✕',
-        onclick: () => { acc.folders.splice(i, 1); render(); },
-      })));
+      remove));
   });
-  box.append(el('div', { class: 'hint', text: t('folderHint') }));
-  box.append(el('button', {
-    class: 'btn', text: t('addFolder'), style: 'margin-top:.5rem',
+  body.append(el('button', {
+    class: 'btn', text: '+ ' + t('addFolder'), style: 'margin-top:.35rem',
     onclick: () => { acc.folders.push({ from: '', to: '' }); render(); },
   }));
-  return box;
+  body.append(el('div', { class: 'hint', text: t('folderHint') }));
+  return section(t('folders'), String(acc.folders.length), body);
 }
 
 function renderAccountView(main) {
   const acc = state.accounts[view.account];
   if (!acc) { view.name = 'yaml'; return renderMain(); }
 
-  const head = el('div', { class: 'out-head' },
+  const head = el('div', { class: 'page-head' },
     el('h2', { text: accountLabel(view.account) }));
   if (state.accounts.length > 1) {
     head.append(el('button', {
@@ -308,9 +334,9 @@ function renderAccountView(main) {
     acc.name = v;
     renderSidebar();
   });
-  main.append(el('div', { class: 'grid' },
+  main.append(section(t('general'), null, el('div', { class: 'grid' },
     field(t('name'), nameInput, t('nameHint')),
-    field(t('interval'), textInput(acc.interval, '5m', (v) => { acc.interval = v; }), t('intervalHint'))));
+    field(t('interval'), textInput(acc.interval, '5m', (v) => { acc.interval = v; }), t('intervalHint')))));
 
   main.append(renderEndpoint(acc, 'source'));
   main.append(renderEndpoint(acc, 'dest'));
@@ -320,39 +346,37 @@ function renderAccountView(main) {
 /* ---------- other views ---------- */
 
 function renderLogView(main) {
-  main.append(el('h2', { text: t('logTitle') }));
-  main.append(el('p', { class: 'sub', text: t('logSub') }));
+  main.append(el('div', { class: 'page-head' }, el('h2', { text: t('logTitle') })));
+  main.append(el('p', { class: 'page-sub', text: t('logSub') }));
 
   const maxSize = textInput(state.log.maxSize, '5MB', (v) => { state.log.maxSize = v; });
   const keep = el('input', { type: 'number', min: '0', max: '100' });
   keep.value = state.log.keep;
   keep.addEventListener('input', () => { state.log.keep = keep.value; afterEdit(); });
 
-  main.append(el('div', { class: 'grid' },
+  main.append(section(t('logTitle'), null, el('div', { class: 'grid' },
     field(t('logMax'), maxSize, t('logMaxHint')),
-    field(t('logKeep'), keep, t('logKeepHint'))));
+    field(t('logKeep'), keep, t('logKeepHint')))));
 }
 
 function outputView(main, title, subtitle, content, filename) {
-  main.append(el('h2', { text: title }));
-  main.append(el('p', { class: 'sub', html: subtitle }));
-
   const copyBtn = el('button', { class: 'btn', text: t('copy') });
   copyBtn.addEventListener('click', () => copyToClipboard(content, copyBtn));
-  main.append(el('div', { class: 'out-head' },
-    el('span', {}),
-    el('div', { class: 'row' },
-      copyBtn,
-      el('button', {
-        class: 'btn', text: t('download'),
-        onclick: () => download(filename, content),
-      }))));
+
+  main.append(el('div', { class: 'page-head' },
+    el('h2', { text: title }),
+    copyBtn,
+    el('button', {
+      class: 'btn primary', text: t('download'),
+      onclick: () => download(filename, content),
+    })));
+  main.append(el('p', { class: 'page-sub', html: subtitle }));
   main.append(el('pre', { text: content }));
 }
 
 function renderImportView(main) {
-  main.append(el('h2', { text: t('importTitle') }));
-  main.append(el('p', { class: 'sub', text: t('importHint') }));
+  main.append(el('div', { class: 'page-head' }, el('h2', { text: t('importTitle') })));
+  main.append(el('p', { class: 'page-sub', text: t('importHint') }));
 
   const status = el('div', { class: 'hint' });
   const area = el('textarea', { spellcheck: 'false', placeholder: 'accounts:\n  - name: trabajo\n    ...' });
@@ -393,7 +417,7 @@ function renderImportView(main) {
 function renderErrors(main) {
   const errors = errorsFor();
   if (errors.length === 0) return;
-  const box = el('div', { class: 'errors' }, el('div', { text: t('errTitle') }));
+  const box = el('div', { class: 'errors' }, el('strong', { text: t('errTitle') }));
   const list = el('ul');
   errors.forEach((e) => list.append(el('li', { text: e.text })));
   box.append(list);
