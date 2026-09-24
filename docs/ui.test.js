@@ -210,27 +210,39 @@ test('un YAML ilegible avisa y deja la página en pie', () => {
 test('el idioma se detecta solo a partir del navegador', () => {
   const english = loadPage({ languages: ['en-GB', 'es'] });
   assert.strictEqual(english.document.documentElement.lang, 'en');
+  assert.strictEqual($(english, 'lang-select').value, 'en', 'el desplegable debe reflejar lo detectado');
   assert.ok(english.document.body.textContent.includes('Add account'));
 
   const spanish = loadPage({ languages: ['es-ES'] });
   assert.strictEqual(spanish.document.documentElement.lang, 'es');
+  assert.strictEqual($(spanish, 'lang-select').value, 'es');
   assert.ok(spanish.document.body.textContent.includes('Añadir cuenta'));
 });
 
-test('elegir idioma a mano manda sobre la detección y se recuerda', () => {
+test('el desplegable ofrece los dos idiomas con su bandera', () => {
+  const w = loadPage();
+  const options = [...$(w, 'lang-select').options];
+  assert.deepStrictEqual(options.map((o) => o.value), ['es', 'en']);
+  assert.ok(options[0].textContent.includes('\u{1F1EA}\u{1F1F8}'), 'falta la bandera de España');
+  assert.ok(options[1].textContent.includes('\u{1F1EC}\u{1F1E7}'), 'falta la bandera del Reino Unido');
+  assert.ok(options[0].textContent.includes('Español'));
+  assert.ok(options[1].textContent.includes('English'));
+});
+
+test('elegir idioma en el desplegable manda sobre la detección y se recuerda', () => {
   const w = loadPage({ languages: ['es-ES'] });
-  click($(w, 'lang-en'));
+  const selector = $(w, 'lang-select');
+  selector.value = 'en';
+  selector.dispatchEvent(new w.Event('change', { bubbles: true }));
+
   assert.strictEqual(w.document.documentElement.lang, 'en');
-  assert.strictEqual($(w, 'lang-en').getAttribute('aria-pressed'), 'true');
+  assert.ok(w.document.body.textContent.includes('Add account'));
   assert.strictEqual(w.localStorage.getItem('mailsync.lang'), 'en');
 
-  // A fresh visit keeps the choice even though the browser says Spanish.
+  // A fresh visit keeps the choice even though the browser still says Spanish.
   const again = loadPage({ languages: ['es-ES'], stored: 'en' });
   assert.strictEqual(again.document.documentElement.lang, 'en');
-
-  click($(again, 'lang-auto'));
-  assert.strictEqual(again.document.documentElement.lang, 'es');
-  assert.strictEqual(again.localStorage.getItem('mailsync.lang'), null, 'auto no debe dejar preferencia');
+  assert.strictEqual($(again, 'lang-select').value, 'en');
 });
 
 test('descargar no rompe nada', () => {

@@ -37,13 +37,16 @@
   .chip { font-size: .8rem; padding: .2rem .55rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
   .chip.ok { color: var(--ok); border-color: var(--ok); }
   .chip.bad { color: var(--danger); border-color: var(--danger); }
-  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-  .segmented button {
-    border: none; border-radius: 0; background: var(--bg); color: var(--fg);
-    padding: .3rem .6rem; font-size: .8rem; cursor: pointer;
+  #lang-select {
+    width: auto; padding: .28rem 1.6rem .28rem .5rem; font-size: .85rem; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg);
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
   }
-  .segmented button + button { border-left: 1px solid var(--line); }
-  .segmented button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 
   /* ---- layout ---- */
   #shell { display: flex; height: calc(100% - var(--topbar)); }
@@ -124,11 +127,10 @@
   <span class="brand">mailsync<small id="brand-sub"></small></span>
   <span class="spacer"></span>
   <span id="status-chip" class="chip"></span>
-  <span class="segmented" id="lang-switch">
-    <button id="lang-auto" aria-pressed="false">Auto</button>
-    <button id="lang-es" aria-pressed="false">ES</button>
-    <button id="lang-en" aria-pressed="false">EN</button>
-  </span>
+  <select id="lang-select" aria-label="Idioma / Language">
+    <option value="es">🇪🇸 Español</option>
+    <option value="en">🇬🇧 English</option>
+  </select>
 </div>
 
 <div id="shell">
@@ -141,8 +143,8 @@
 <!-- The ?v= query busts the CDN cache: GitHub Pages serves assets for a
      while, and a stale script against fresh markup breaks the page. Bump it
      whenever these files change. -->
-<script src="config.js?v=2"></script>
-<script src="strings.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="config.js?v=3"></script>
+<script src="strings.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

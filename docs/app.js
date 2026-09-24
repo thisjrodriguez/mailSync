@@ -15,17 +15,18 @@ function detectLang() {
   return tags[0] && tags[0].toLowerCase().startsWith('en') ? 'en' : 'es';
 }
 
-function storedPreference() {
+// The browser's own preference is the starting point; an explicit choice
+// from the menu overrides it from then on.
+function storedLang() {
   try {
     const saved = localStorage.getItem(LANG_KEY);
-    return saved === 'es' || saved === 'en' ? saved : 'auto';
+    return saved === 'es' || saved === 'en' ? saved : null;
   } catch {
-    return 'auto';
+    return null;
   }
 }
 
-let langPref = storedPreference();
-let lang = langPref === 'auto' ? detectLang() : langPref;
+let lang = storedLang() || detectLang();
 
 const t = (key, ...args) => {
   let s = STRINGS[lang][key];
@@ -115,15 +116,12 @@ function renderTopbar() {
     chip.className = 'chip bad';
     chip.textContent = errors.length === 1 ? t('statusOneError') : t('statusErrors', errors.length);
   }
-  [['auto', 'lang-auto'], ['es', 'lang-es'], ['en', 'lang-en']].forEach(([value, id]) => {
-    $(id).setAttribute('aria-pressed', String(langPref === value));
-  });
+  $('lang-select').value = lang;
 }
 
-function setLang(pref) {
-  langPref = pref;
-  lang = pref === 'auto' ? detectLang() : pref;
-  try { pref === 'auto' ? localStorage.removeItem(LANG_KEY) : localStorage.setItem(LANG_KEY, pref); } catch { /* ignore */ }
+function setLang(chosen) {
+  lang = chosen;
+  try { localStorage.setItem(LANG_KEY, chosen); } catch { /* ignore */ }
   document.documentElement.lang = lang;
   render();
 }
@@ -455,8 +453,6 @@ async function copyToClipboard(text, button) {
 
 /* ---------- wiring ---------- */
 
-$('lang-auto').addEventListener('click', () => setLang('auto'));
-$('lang-es').addEventListener('click', () => setLang('es'));
-$('lang-en').addEventListener('click', () => setLang('en'));
+$('lang-select').addEventListener('change', (e) => setLang(e.target.value));
 
 render();
